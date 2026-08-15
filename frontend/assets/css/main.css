@@ -1,0 +1,40 @@
+@import url("https://fonts.googleapis.com/css2?family=Fraunces:wght@600;700&family=Space+Grotesk:wght@400;500;700&display=swap");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+  --page-1: #f8fbff;
+  --page-2: #eef4ff;
+  --page-3: #fff6eb;
+  --card: rgba(255, 255, 255, 0.82);
+  --card-strong: rgba(255, 255, 255, 0.94);
+}
+
+html,
+body,
+#__nuxt {
+  min-height: 100%;
+}
+
+body {
+  @apply bg-slate-50 font-sans text-ink antialiased;
+  background:
+    radial-gradient(circle at top left, rgba(37, 99, 235, 0.12), transparent 34%),
+    radial-gradient(circle at top right, rgba(249, 115, 22, 0.14), transparent 26%),
+    linear-gradient(180deg, var(--page-1) 0%, var(--page-2) 48%, var(--page-3) 100%);
+}
+
+a,
+button,
+input,
+textarea,
+select {
+  @apply transition;
+}
+
+::selection {
+  background: rgba(37, 99, 235, 0.22);
+}

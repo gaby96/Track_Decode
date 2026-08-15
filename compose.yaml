@@ -1,0 +1,76 @@
+services:
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  web:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    command: python manage.py runserver 0.0.0.0:8000
+    init: true
+    ports:
+      - "8000:8000"
+    env_file:
+      - ./backend/.env
+    environment:
+      CELERY_BROKER_URL: redis://redis:6379/0
+      REDIS_CHANNEL_URL: redis://redis:6379/1
+      ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-127.0.0.1,localhost,web}
+      CORS_ALLOWED_ORIGINS: ${DJANGO_CORS_ALLOWED_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000}
+      CSRF_TRUSTED_ORIGINS: ${DJANGO_CSRF_TRUSTED_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000,http://localhost:8000,http://127.0.0.1:8000}
+    volumes:
+      - ./backend:/app
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    command: celery -A config worker --loglevel=info --concurrency=2
+    init: true
+    env_file:
+      - ./backend/.env
+    environment:
+      CELERY_BROKER_URL: redis://redis:6379/0
+      REDIS_CHANNEL_URL: redis://redis:6379/1
+    volumes:
+      - ./backend:/app
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      target: dev
+    command: sh -c "pnpm dev --host 0.0.0.0 --port 3000"
+    init: true
+    ports:
+      - "3000:3000"
+    environment:
+      NUXT_BACKEND_ORIGIN: http://web:8000
+      NUXT_PUBLIC_APP_ORIGIN: ${NUXT_PUBLIC_APP_ORIGIN:-http://127.0.0.1:3000}
+      NUXT_PUBLIC_BACKEND_ORIGIN: ${NUXT_PUBLIC_BACKEND_ORIGIN:-http://127.0.0.1:8000}
+      NUXT_PUBLIC_WS_ORIGIN: ${NUXT_PUBLIC_WS_ORIGIN:-ws://127.0.0.1:8000}
+      CHOKIDAR_USEPOLLING: "true"
+      CHOKIDAR_INTERVAL: "300"
+    volumes:
+      - ./frontend:/app
+      - frontend_node_modules:/app/node_modules
+    depends_on:
+      - web
+
+volumes:
+  redis_data:
+  frontend_node_modules:
