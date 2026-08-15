@@ -156,7 +156,7 @@ async function restartGame() {
     await apiFetch(`/games/${state.value.game.id}/restart/`, {
       method: "POST",
       headers: {
-        "X-CSRFToken": getCsrfToken(),
+        "X-CSRFToken": await getCsrfToken(),
       },
     });
 

@@ -17,9 +17,12 @@ const hopByHopHeaders = new Set([
 export default defineEventHandler(async (event) => {
   const config = useRuntimeConfig(event);
   const requestUrl = getRequestURL(event);
+  const backendOrigin = config.backendOrigin.startsWith("http")
+    ? config.backendOrigin
+    : `http://${config.backendOrigin}`;
   const targetUrl = new URL(
     requestUrl.pathname + requestUrl.search,
-    config.backendOrigin,
+    backendOrigin,
   );
   const headers = new Headers(getRequestHeaders(event));
 

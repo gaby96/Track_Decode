@@ -1,0 +1,83 @@
+services:
+  - name: track-decode-backend
+    type: web
+    runtime: docker
+    plan: free
+    region: oregon
+    dockerContext: ./backend
+    dockerfilePath: ./backend/Dockerfile
+    dockerCommand: >-
+      sh -c "python manage.py migrate --noinput &&
+      python manage.py collectstatic --noinput &&
+      celery -A config worker --loglevel=info --concurrency=2 &
+      CELERY_PID=$!;
+      trap 'kill ${CELERY_PID}' TERM INT;
+      daphne -b 0.0.0.0 -p ${PORT:-10000} config.asgi:application;
+      STATUS=$?;
+      kill ${CELERY_PID};
+      wait ${CELERY_PID};
+      exit ${STATUS}"
+    healthCheckPath: /api/csrf/
+    envVars:
+      - key: DEBUG
+        value: "false"
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DATABASE_URL
+        fromDatabase:
+          name: track-decode-db
+          property: connectionString
+      - key: CELERY_BROKER_URL
+        fromService:
+          type: keyvalue
+          name: track-decode-redis
+          property: connectionString
+      - key: REDIS_CHANNEL_URL
+        fromService:
+          type: keyvalue
+          name: track-decode-redis
+          property: connectionString
+      - key: FRONTEND_ORIGIN
+        fromService:
+          type: web
+          name: track-decode-frontend
+          envVarKey: RENDER_EXTERNAL_URL
+      - key: SPOTIFY_CLIENT_ID
+        sync: false
+      - key: SPOTIFY_CLIENT_SECRET
+        sync: false
+
+  - name: track-decode-frontend
+    type: web
+    runtime: docker
+    plan: free
+    region: oregon
+    dockerContext: ./frontend
+    dockerfilePath: ./frontend/Dockerfile
+    envVars:
+      - key: NUXT_BACKEND_ORIGIN
+        fromService:
+          type: web
+          name: track-decode-backend
+          property: hostport
+      - key: NUXT_PUBLIC_APP_ORIGIN
+        fromService:
+          type: web
+          name: track-decode-frontend
+          envVarKey: RENDER_EXTERNAL_URL
+      - key: NUXT_PUBLIC_BACKEND_ORIGIN
+        fromService:
+          type: web
+          name: track-decode-backend
+          envVarKey: RENDER_EXTERNAL_URL
+
+  - name: track-decode-redis
+    type: keyvalue
+    plan: free
+    region: oregon
+    ipAllowList: []
+
+databases:
+  - name: track-decode-db
+    plan: free
+    region: oregon

@@ -10,7 +10,7 @@ export default defineNuxtConfig({
         process.env.NUXT_PUBLIC_APP_ORIGIN || "http://127.0.0.1:3000",
       backendOrigin:
         process.env.NUXT_PUBLIC_BACKEND_ORIGIN || "http://127.0.0.1:8000",
-      wsOrigin: process.env.NUXT_PUBLIC_WS_ORIGIN || "ws://127.0.0.1:8000",
+      wsOrigin: process.env.NUXT_PUBLIC_WS_ORIGIN || "",
     },
   },
   app: {

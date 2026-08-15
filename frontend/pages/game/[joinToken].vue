@@ -326,6 +326,18 @@ const isFinished = computed(() => (
   state.value?.game.status === "FINISHED"
 ));
 
+const websocketOrigin = computed(() => {
+  const configuredOrigin = config.public.wsOrigin.trim();
+
+  if (configuredOrigin) {
+    return configuredOrigin.replace(/\/$/, "");
+  }
+
+  return config.public.backendOrigin
+    .replace(/^http/i, "ws")
+    .replace(/\/$/, "");
+});
+
 const winningTeams = computed(() => (
   (state.value?.standings || []).filter((entry) => entry.rank === 1)
 ));
@@ -547,7 +559,7 @@ function connectSocket() {
 
   socketState.value = "connecting";
   socket = new WebSocket(
-    `${config.public.wsOrigin}/ws/games/${joinToken.value}/`,
+    `${websocketOrigin.value}/ws/games/${joinToken.value}/`,
   );
 
   socket.addEventListener("open", () => {
@@ -725,7 +737,7 @@ async function restartGame() {
     await apiFetch(`/games/${state.value.game.id}/restart/`, {
       method: "POST",
       headers: {
-        "X-CSRFToken": getCsrfToken(),
+        "X-CSRFToken": await getCsrfToken(),
       },
     });
 

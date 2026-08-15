@@ -24,15 +24,33 @@ environ.Env.read_env(BASE_DIR / ".env")
 SECRET_KEY = env("SECRET_KEY")
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = env.bool("DEBUG", default=False)
+
+RENDER_EXTERNAL_HOSTNAME = env.str(
+    "RENDER_EXTERNAL_HOSTNAME",
+    default="",
+)
+RENDER_EXTERNAL_URL = env.str(
+    "RENDER_EXTERNAL_URL",
+    default="",
+)
+FRONTEND_ORIGIN = env.str(
+    "FRONTEND_ORIGIN",
+    default="",
+)
+
+default_allowed_hosts = [
+    "127.0.0.1",
+    "localhost",
+    "web",
+]
+
+if RENDER_EXTERNAL_HOSTNAME:
+    default_allowed_hosts.append(RENDER_EXTERNAL_HOSTNAME)
 
 ALLOWED_HOSTS = env.list(
     "ALLOWED_HOSTS",
-    default=[
-        "127.0.0.1",
-        "localhost",
-        "web",
-    ],
+    default=default_allowed_hosts,
 )
 
 
@@ -57,8 +75,10 @@ CORS_ALLOWED_ORIGINS = env.list(
     default=[
         "http://localhost:3000",
         "http://127.0.0.1:3000",
+        *([FRONTEND_ORIGIN] if FRONTEND_ORIGIN else []),
     ],
 )
+CORS_ALLOW_CREDENTIALS = True
 
 CSRF_TRUSTED_ORIGINS = env.list(
     "CSRF_TRUSTED_ORIGINS",
@@ -67,11 +87,14 @@ CSRF_TRUSTED_ORIGINS = env.list(
         "http://127.0.0.1:3000",
         "http://localhost:8000",
         "http://127.0.0.1:8000",
+        *([FRONTEND_ORIGIN] if FRONTEND_ORIGIN else []),
+        *([RENDER_EXTERNAL_URL] if RENDER_EXTERNAL_URL else []),
     ],
 )
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'corsheaders.middleware.CorsMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -105,10 +128,10 @@ WSGI_APPLICATION = 'config.wsgi.application'
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
 DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
-    }
+    'default': env.db(
+        "DATABASE_URL",
+        default=f"sqlite:///{(BASE_DIR / 'db.sqlite3').as_posix()}",
+    ),
 }
 
 
@@ -146,13 +169,32 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 
-STATIC_URL = 'static/'
+STATIC_URL = '/static/'
+STATIC_ROOT = BASE_DIR / "staticfiles"
+STORAGES = {
+    "staticfiles": {
+        "BACKEND": (
+            "whitenoise.storage.CompressedManifestStaticFilesStorage"
+        ),
+    },
+}
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+
+if not DEBUG:
+    CSRF_COOKIE_SECURE = True
+    CSRF_COOKIE_SAMESITE = "None"
+    SESSION_COOKIE_SECURE = True
+    SESSION_COOKIE_SAMESITE = "None"
 
 SPOTIFY_CLIENT_ID = env("SPOTIFY_CLIENT_ID")
 SPOTIFY_CLIENT_SECRET = env("SPOTIFY_CLIENT_SECRET")
 SPOTIFY_REDIRECT_URI = env.str(
     "SPOTIFY_REDIRECT_URI",
-    default="http://127.0.0.1:8000/api/spotify/callback/",
+    default=(
+        f"{RENDER_EXTERNAL_URL}/api/spotify/callback/"
+        if RENDER_EXTERNAL_URL
+        else "http://127.0.0.1:8000/api/spotify/callback/"
+    ),
 )
 
 CELERY_BROKER_URL = env.str(

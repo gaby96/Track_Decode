@@ -1,14 +1,21 @@
 type ApiFetchOptions<T> = Parameters<typeof $fetch<T>>[1];
 
 export function useApi() {
+  const config = useRuntimeConfig();
+
   async function apiFetch<T>(
     path: string,
     options?: ApiFetchOptions<T>,
   ) {
     const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+    const targetPath = `/api${normalizedPath}`;
+    const requestUrl = import.meta.client
+      ? `${config.public.backendOrigin}${targetPath}`
+      : targetPath;
 
-    return await $fetch<T>(`/api${normalizedPath}`, {
+    return await $fetch<T>(requestUrl, {
       ...options,
+      credentials: import.meta.client ? "include" : options?.credentials,
     });
   }
 

@@ -6,19 +6,21 @@ from .views import (
     AwardScoreView,
     CloseRegistrationView,
     CloseVotingView,
+    CsrfTokenView,
     FinishGameView,
     GameListCreateView,
     GameStateView,
+    HealthcheckView,
     HostPlayerListView,
     OpenVotingView,
     PlayerJoinView,
     PlayerSessionDetailView,
     PrepareRandomTrackView,
-    PublicGameDetailView,
     PublicGameByCodeDetailView,
+    PublicGameDetailView,
     PublicLeaderboardView,
-    RevealAnswerView,
     RestartGameView,
+    RevealAnswerView,
     SelectRandomGenreView,
     SelectSpotifyDeviceView,
     SpotifyCallbackView,
@@ -37,6 +39,8 @@ from .views import (
 app_name = "games"
 
 urlpatterns = [
+    path("csrf/", CsrfTokenView.as_view(), name="csrf-token"),
+    path("healthz/", HealthcheckView.as_view(), name="healthcheck"),
     path("games/", GameListCreateView.as_view(), name="game-list-create"),
     path(
         "games/join/code/<str:join_code>/",

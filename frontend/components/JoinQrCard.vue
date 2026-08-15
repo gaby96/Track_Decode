@@ -603,7 +603,7 @@ async function closeRegistration() {
     await apiFetch(`/games/${props.game.id}/close-registration/`, {
       method: "POST",
       headers: {
-        "X-CSRFToken": getCsrfToken(),
+        "X-CSRFToken": await getCsrfToken(),
       },
     });
 
@@ -633,7 +633,7 @@ async function assignTeams() {
     await apiFetch(`/games/${props.game.id}/assign-teams/`, {
       method: "POST",
       headers: {
-        "X-CSRFToken": getCsrfToken(),
+        "X-CSRFToken": await getCsrfToken(),
       },
     });
 
@@ -675,7 +675,7 @@ async function openVoting() {
     }>(`/games/${props.game.id}/voting/open/`, {
       method: "POST",
       headers: {
-        "X-CSRFToken": getCsrfToken(),
+        "X-CSRFToken": await getCsrfToken(),
       },
     });
 
@@ -707,7 +707,7 @@ async function closeVoting() {
     await apiFetch(`/games/${props.game.id}/voting/close/`, {
       method: "POST",
       headers: {
-        "X-CSRFToken": getCsrfToken(),
+        "X-CSRFToken": await getCsrfToken(),
       },
     });
 
@@ -744,7 +744,7 @@ async function prepareTrack() {
       {
         method: "POST",
         headers: {
-          "X-CSRFToken": getCsrfToken(),
+          "X-CSRFToken": await getCsrfToken(),
         },
       },
     );
@@ -778,7 +778,7 @@ async function startGame() {
     }>(`/games/${props.game.id}/start/`, {
       method: "POST",
       headers: {
-        "X-CSRFToken": getCsrfToken(),
+        "X-CSRFToken": await getCsrfToken(),
       },
     });
 
@@ -820,7 +820,7 @@ async function startPlayback() {
       {
         method: "POST",
         headers: {
-          "X-CSRFToken": getCsrfToken(),
+          "X-CSRFToken": await getCsrfToken(),
         },
       },
     );
@@ -869,7 +869,7 @@ async function stopPlayback() {
       {
         method: "POST",
         headers: {
-          "X-CSRFToken": getCsrfToken(),
+          "X-CSRFToken": await getCsrfToken(),
         },
       },
     );
@@ -908,7 +908,7 @@ async function revealAnswer() {
       {
         method: "POST",
         headers: {
-          "X-CSRFToken": getCsrfToken(),
+          "X-CSRFToken": await getCsrfToken(),
         },
       },
     );
@@ -947,7 +947,7 @@ async function awardScore(
       {
         method: "POST",
         headers: {
-          "X-CSRFToken": getCsrfToken(),
+          "X-CSRFToken": await getCsrfToken(),
         },
         body: {
           song_title_correct: songTitleCorrect,
@@ -987,7 +987,7 @@ async function advanceTurn() {
       {
         method: "POST",
         headers: {
-          "X-CSRFToken": getCsrfToken(),
+          "X-CSRFToken": await getCsrfToken(),
         },
       },
     );
@@ -1036,7 +1036,7 @@ async function startNextRound() {
     }>(`/games/${props.game.id}/rounds/next/`, {
       method: "POST",
       headers: {
-        "X-CSRFToken": getCsrfToken(),
+        "X-CSRFToken": await getCsrfToken(),
       },
     });
 
@@ -1069,7 +1069,7 @@ async function saveRoundsPerTeam() {
     const updatedGame = await apiFetch<HostGame>(`/games/${props.game.id}/settings/`, {
       method: "PATCH",
       headers: {
-        "X-CSRFToken": getCsrfToken(),
+        "X-CSRFToken": await getCsrfToken(),
       },
       body: {
         rounds_per_team: roundsPerTeamInput.value,
@@ -1111,7 +1111,7 @@ async function finishGame(options?: {
     }>(`/games/${props.game.id}/finish/`, {
       method: "POST",
       headers: {
-        "X-CSRFToken": getCsrfToken(),
+        "X-CSRFToken": await getCsrfToken(),
       },
     });
 
@@ -1151,7 +1151,7 @@ async function restartGame() {
     }>(`/games/${props.game.id}/restart/`, {
       method: "POST",
       headers: {
-        "X-CSRFToken": getCsrfToken(),
+        "X-CSRFToken": await getCsrfToken(),
       },
     });
 

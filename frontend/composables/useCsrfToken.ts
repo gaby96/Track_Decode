@@ -1,14 +1,28 @@
 export function useCsrfToken() {
-  function getCsrfToken() {
+  const config = useRuntimeConfig();
+  const csrfToken = useState<string>(
+    "csrf-token",
+    () => "",
+  );
+
+  async function getCsrfToken() {
     if (import.meta.server) {
       return "";
     }
 
-    const match = document.cookie.match(
-      /(?:^|;\s*)csrftoken=([^;]+)/,
+    if (csrfToken.value) {
+      return csrfToken.value;
+    }
+
+    const response = await $fetch<{ csrfToken: string }>(
+      `${config.public.backendOrigin}/api/csrf/`,
+      {
+        credentials: "include",
+      },
     );
 
-    return match ? decodeURIComponent(match[1]) : "";
+    csrfToken.value = response.csrfToken;
+    return csrfToken.value;
   }
 
   return {

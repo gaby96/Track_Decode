@@ -145,6 +145,10 @@ const { data: games, pending, refresh } = await useAsyncData<HostGame[]>(
       return [];
     }
   },
+  {
+    server: false,
+    default: () => [],
+  },
 );
 
 async function refreshGames() {
@@ -169,9 +173,9 @@ async function createGame() {
 
   try {
     const createdGame = await apiFetch<HostGame>("/games/", {
-      method: "POST",
+        method: "POST",
       headers: {
-        "X-CSRFToken": getCsrfToken(),
+        "X-CSRFToken": await getCsrfToken(),
       },
       body: {
         name: createForm.name || "Track Decode",
