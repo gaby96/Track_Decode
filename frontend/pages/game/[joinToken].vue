@@ -250,6 +250,7 @@ const storedSession = ref<StoredPlayerSession | null>(null);
 const candidateData = ref<VotingCandidatesResponse | null>(null);
 const candidateError = ref("");
 const candidatesPending = ref(false);
+let refreshInProgress = false;
 const selectedCandidateId = ref("");
 const submittingVote = ref(false);
 const voteMessage = ref("");
@@ -260,7 +261,10 @@ const isHostForCurrentGame = ref(false);
 let socket: WebSocket | null = null;
 let reconnectTimeoutId: ReturnType<typeof window.setTimeout> | null = null;
 let statePollIntervalId: ReturnType<typeof window.setInterval> | null = null;
+let isMounted = false;
 let latestVotingRequestId = 0;
+
+const STATE_POLL_INTERVAL_MS = 20_000;
 
 useSeoMeta({
   title: `Game ${joinToken.value}`,
@@ -417,18 +421,23 @@ async function refreshHostAccess() {
 }
 
 onMounted(async () => {
+  isMounted = true;
   storedSession.value = playerSession.read();
   await refreshHostAccess();
   await refreshPlayerSession();
   await refreshVotingPanel();
   connectSocket();
 
+  document.addEventListener("visibilitychange", handleVisibilityChange);
+
   statePollIntervalId = window.setInterval(() => {
     void refreshRealtimeState();
-  }, 2000);
+  }, STATE_POLL_INTERVAL_MS);
 });
 
 onBeforeUnmount(() => {
+  isMounted = false;
+  document.removeEventListener("visibilitychange", handleVisibilityChange);
   if (statePollIntervalId !== null) {
     window.clearInterval(statePollIntervalId);
     statePollIntervalId = null;
@@ -438,7 +447,14 @@ onBeforeUnmount(() => {
     reconnectTimeoutId = null;
   }
   socket?.close();
+  socket = null;
 });
+
+function handleVisibilityChange() {
+  if (document.visibilityState === "visible") {
+    void refreshRealtimeState();
+  }
+}
 
 watch(
   () => state.value?.game.status,
@@ -564,6 +580,7 @@ function connectSocket() {
 
   socket.addEventListener("open", () => {
     socketState.value = "live";
+    void refreshRealtimeState();
   });
 
   socket.addEventListener("close", () => {
@@ -591,7 +608,7 @@ function connectSocket() {
 }
 
 function scheduleSocketReconnect() {
-  if (reconnectTimeoutId !== null) {
+  if (!isMounted || reconnectTimeoutId !== null) {
     return;
   }
 
@@ -687,9 +704,17 @@ function applyRealtimeEvent(payload: {
 }
 
 async function refreshRealtimeState() {
-  await refresh();
-  await refreshPlayerSession();
-  await refreshVotingPanel();
+  if (refreshInProgress) {
+    return;
+  }
+  refreshInProgress = true;
+  try {
+    await refresh();
+    await refreshPlayerSession();
+    await refreshVotingPanel();
+  } finally {
+    refreshInProgress = false;
+  }
 }
 
 async function submitVote() {

@@ -1,0 +1,36 @@
+name: Deploy to Oracle VM
+
+on:
+    workflow_dispatch:
+
+concurrency:
+    group: oracle-production
+    cancel-in-progress: false
+
+jobs:
+    deploy:
+        runs-on: ubuntu-latest
+        steps:
+            - name: Configure SSH
+              env:
+                  SSH_PRIVATE_KEY: ${{ secrets.ORACLE_SSH_PRIVATE_KEY }}
+                  SSH_KNOWN_HOSTS: ${{ secrets.ORACLE_SSH_KNOWN_HOSTS }}
+              run: |
+                  install -m 700 -d ~/.ssh
+                  printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/oracle
+                  chmod 600 ~/.ssh/oracle
+                  printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+
+            - name: Deploy
+              env:
+                  ORACLE_HOST: ${{ secrets.ORACLE_HOST }}
+                  ORACLE_USER: ${{ secrets.ORACLE_USER }}
+              run: |
+                  ssh -i ~/.ssh/oracle "$ORACLE_USER@$ORACLE_HOST" '
+                    set -e
+                    cd /opt/track-decode
+                    git pull --ff-only origin main
+                    cd deploy/oracle
+                    docker compose up -d --build --remove-orphans
+                    docker compose ps
+                  '
