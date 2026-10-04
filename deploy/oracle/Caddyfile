@@ -1,8 +1,4 @@
-{
-	email {$ACME_EMAIL}
-}
-
-{$APP_DOMAIN} {
+{$APP_HOST} {
 	encode zstd gzip
 
 	@backend path /api/* /admin/* /api-auth/* /static/*

@@ -1,0 +1,73 @@
+{% extends "admin/base_site.html" %}
+
+{% block breadcrumbs %}
+  <div class="breadcrumbs">
+    <a href="{% url 'admin:index' %}">Home</a>
+    &rsaquo; <a href="{% url 'admin:games_game_changelist' %}">Games</a>
+    &rsaquo; <a href="{{ change_url }}">{{ original }}</a>
+    &rsaquo; Spotify device
+  </div>
+{% endblock %}
+
+{% block content %}
+  <div id="content-main">
+    <p>
+      Open Spotify on the device you want to use and play or pause a song so
+      Spotify reports it as available.
+    </p>
+
+    <p class="object-tools">
+      <a class="button" href="{{ connect_url }}">
+        {% if spotify_connected %}Reconnect Spotify{% else %}Connect Spotify{% endif %}
+      </a>
+      {% if spotify_connected %}
+        <a class="button" href="">Refresh devices</a>
+      {% endif %}
+    </p>
+
+    {% if spotify_connected %}
+      {% if devices %}
+        <form method="post">
+          {% csrf_token %}
+          <fieldset class="module aligned">
+            <div class="form-row">
+              <div>
+                <label class="required" for="id_device_id">Spotify device:</label>
+                <select id="id_device_id" name="device_id" required>
+                  <option value="">Select a device</option>
+                  {% for device in devices %}
+                    <option
+                      value="{{ device.id }}"
+                      {% if device.id == current_device_id %}selected{% endif %}
+                      {% if device.is_restricted %}disabled{% endif %}
+                    >
+                      {{ device.name|default:"Unnamed device" }}
+                      ({{ device.type|default:"Unknown type" }})
+                      {% if device.is_active %}— active{% endif %}
+                      {% if device.is_restricted %}— restricted{% endif %}
+                    </option>
+                  {% endfor %}
+                </select>
+                <div class="help">
+                  Selecting a device transfers Spotify playback control to it
+                  without starting playback.
+                </div>
+              </div>
+            </div>
+          </fieldset>
+          <div class="submit-row">
+            <input type="submit" value="Select device" class="default">
+            <a class="button cancel-link" href="{{ change_url }}">Cancel</a>
+          </div>
+        </form>
+      {% else %}
+        <p>
+          No Spotify devices were found. Open Spotify on the target device,
+          play or pause a song, and then select <strong>Refresh devices</strong>.
+        </p>
+      {% endif %}
+    {% else %}
+      <p>Connect Spotify to load the devices available to your account.</p>
+    {% endif %}
+  </div>
+{% endblock %}

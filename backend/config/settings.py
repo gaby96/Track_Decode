@@ -50,7 +50,7 @@ if RENDER_EXTERNAL_HOSTNAME:
 
 ALLOWED_HOSTS = env.list(
     "ALLOWED_HOSTS",
-    default=default_allowed_hosts,
+    default=default_allowed_hosts, # pyright: ignore[reportArgumentType]
 )
 
 
@@ -76,7 +76,7 @@ CORS_ALLOWED_ORIGINS = env.list(
         "http://localhost:3000",
         "http://127.0.0.1:3000",
         *([FRONTEND_ORIGIN] if FRONTEND_ORIGIN else []),
-    ],
+    ], # pyright: ignore[reportArgumentType]
 )
 CORS_ALLOW_CREDENTIALS = True
 
@@ -89,7 +89,7 @@ CSRF_TRUSTED_ORIGINS = env.list(
         "http://127.0.0.1:8000",
         *([FRONTEND_ORIGIN] if FRONTEND_ORIGIN else []),
         *([RENDER_EXTERNAL_URL] if RENDER_EXTERNAL_URL else []),
-    ],
+    ], # pyright: ignore[reportArgumentType]
 )
 
 MIDDLEWARE = [
@@ -130,9 +130,13 @@ WSGI_APPLICATION = 'config.wsgi.application'
 DATABASES = {
     'default': env.db(
         "DATABASE_URL",
-        default=f"sqlite:///{(BASE_DIR / 'db.sqlite3').as_posix()}",
+        default=f"sqlite:///{(BASE_DIR / 'db.sqlite3').as_posix()}", # pyright: ignore[reportArgumentType]
     ),
 }
+
+if DATABASES["default"]["ENGINE"] == "django.db.backends.sqlite3":
+    sqlite_options = DATABASES["default"].setdefault("OPTIONS", {})
+    sqlite_options.setdefault("timeout", 30)
 
 
 # Password validation

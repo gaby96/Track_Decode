@@ -15,11 +15,10 @@
         <div
           class="flex h-11 w-11 items-center justify-center rounded-2xl bg-ink text-sm font-bold text-white shadow-pulse"
         >
-          SQ
+          TD
         </div>
         <div>
-          <p class="font-display text-xl text-ink">Spotify Game</p>
-          <p class="text-sm text-slate-600">Live team music quiz frontend</p>
+          <p class="font-display text-xl text-ink">Track Decode</p>
         </div>
       </NuxtLink>
 
@@ -30,16 +29,16 @@
           rel="noreferrer"
           target="_blank"
         >
-          Django Admin
+          Admin
         </a>
-        <a
+        <!-- <a
           :href="`${config.public.backendOrigin}/api-auth/login/`"
           class="rounded-full bg-ink px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
           rel="noreferrer"
           target="_blank"
         >
           Backend Login
-        </a>
+        </a> -->
       </div>
     </header>
 

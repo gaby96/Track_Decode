@@ -19,6 +19,7 @@ from django.middleware.csrf import get_token
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.utils.decorators import method_decorator
+from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.csrf import ensure_csrf_cookie
 from rest_framework import generics, status
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -26,6 +27,7 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from .constants import STRING_ERROR_RESPONSES
 from .models import (
     Game,
     GameTurn,
@@ -39,8 +41,8 @@ from .models import (
 from .realtime import broadcast_game_event
 from .serializers import (
     AwardScoreSerializer,
-    GameSerializer,
     GameRoundsPerTeamUpdateSerializer,
+    GameSerializer,
     GameTurnSerializer,
     GenreSerializer,
     HostTrackSerializer,
@@ -59,7 +61,6 @@ from .services.spotify import (
     get_valid_access_token,
 )
 from .tasks import stop_spotify_playback
-
 
 PLAYBACK_CLIP_DURATION_SECONDS = 15
 
@@ -107,11 +108,7 @@ def _find_replacement_spotify_device(
         return None
 
     active_match = next(
-        (
-            device
-            for device in matching_devices
-            if device.get("is_active") is True
-        ),
+        (device for device in matching_devices if device.get("is_active") is True),
         None,
     )
 
@@ -293,9 +290,7 @@ class PlayerSessionDetailView(APIView):
 
         validated_data = cast(dict[str, str], serializer.validated_data)
         session_token = validated_data["session_token"]
-        session_token_hash = hashlib.sha256(
-            session_token.encode("utf-8")
-        ).hexdigest()
+        session_token_hash = hashlib.sha256(session_token.encode("utf-8")).hexdigest()
 
         player = (
             Player.objects.select_related("team")
@@ -308,7 +303,7 @@ class PlayerSessionDetailView(APIView):
 
         if player is None:
             return Response(
-                {"detail": "Invalid player session."},
+                {"detail": STRING_ERROR_RESPONSES["invalid_player_session"]},
                 status=status.HTTP_401_UNAUTHORIZED,
             )
 
@@ -387,7 +382,8 @@ class UpdateGameRoundsView(APIView):
             )
 
             if (
-                game.status in (
+                game.status
+                in (
                     Game.Status.IN_PROGRESS,
                     Game.Status.PAUSED,
                 )
@@ -517,9 +513,7 @@ class AssignTeamsView(APIView):
 
             # Solo-player teams do not need a separate election step.
             for team in created_teams:
-                members = [
-                    player for player in players if player.team_id == team.pk
-                ]
+                members = [player for player in players if player.team_id == team.pk]
 
                 if len(members) != 1:
                     continue
@@ -745,9 +739,7 @@ class SubmitLeaderVoteView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        session_token_hash = hashlib.sha256(
-            session_token.encode("utf-8")
-        ).hexdigest()
+        session_token_hash = hashlib.sha256(session_token.encode("utf-8")).hexdigest()
 
         with transaction.atomic():
             game = get_object_or_404(
@@ -786,9 +778,7 @@ class SubmitLeaderVoteView(APIView):
             if team is None:
                 return Response(
                     {
-                        "detail": (
-                            "The player has not been assigned to a team."
-                        ),
+                        "detail": ("The player has not been assigned to a team."),
                     },
                     status=status.HTTP_409_CONFLICT,
                 )
@@ -833,8 +823,7 @@ class SubmitLeaderVoteView(APIView):
                 return Response(
                     {
                         "detail": (
-                            "The selected candidate is not a member "
-                            "of your team."
+                            "The selected candidate is not a member of your team."
                         ),
                     },
                     status=status.HTTP_400_BAD_REQUEST,
@@ -854,9 +843,7 @@ class SubmitLeaderVoteView(APIView):
                 "team_id": str(team.pk),
                 "votes_submitted": votes_submitted,
                 "team_player_count": team_player_count,
-                "voting_complete": (
-                    votes_submitted >= team_player_count
-                ),
+                "voting_complete": (votes_submitted >= team_player_count),
             }
 
             transaction.on_commit(
@@ -870,19 +857,13 @@ class SubmitLeaderVoteView(APIView):
 
         return Response(
             {
-                "detail": (
-                    "Leader vote submitted."
-                ),
+                "detail": ("Leader vote submitted."),
                 "team_id": str(team.pk),
                 "votes_submitted": votes_submitted,
                 "team_player_count": team_player_count,
-                "voting_complete": (
-                    votes_submitted >= team_player_count
-                ),
+                "voting_complete": (votes_submitted >= team_player_count),
             },
-            status=(
-                status.HTTP_201_CREATED
-            ),
+            status=(status.HTTP_201_CREATED),
         )
 
 
@@ -911,7 +892,7 @@ class TeamVotingCandidatesView(APIView):
 
         if player is None:
             return Response(
-                {"detail": "Invalid player session."},
+                {"detail": STRING_ERROR_RESPONSES['invalid_player_session']},
                 status=status.HTTP_401_UNAUTHORIZED,
             )
 
@@ -1070,9 +1051,7 @@ class CloseVotingView(APIView):
             leaders_payload: list[dict[str, object]] = []
 
         teams = (
-            Team.objects.filter(game=game)
-            .select_related("leader")
-            .order_by("position")
+            Team.objects.filter(game=game).select_related("leader").order_by("position")
         )
 
         for team in teams:
@@ -1145,9 +1124,7 @@ class StartGameView(APIView):
                 )
 
             teams = list(
-                Team.objects.select_for_update().filter(game=game).order_by(
-                    "position"
-                )
+                Team.objects.select_for_update().filter(game=game).order_by("position")
             )
 
             if not teams:
@@ -1284,29 +1261,19 @@ class SelectRandomGenreView(APIView):
         )
         session_token = validated_data["session_token"]
 
-        session_token_hash = hashlib.sha256(
-            session_token.encode("utf-8")
-        ).hexdigest()
+        session_token_hash = hashlib.sha256(session_token.encode("utf-8")).hexdigest()
 
         with transaction.atomic():
-            locked_game = Game.objects.select_for_update().get(
-                pk=game.pk
-            )
+            locked_game = Game.objects.select_for_update().get(pk=game.pk)
 
             if locked_game.status != Game.Status.IN_PROGRESS:
                 return Response(
-                    {
-                        "detail": (
-                            "The game is not currently in progress."
-                        )
-                    },
+                    {"detail": ("The game is not currently in progress.")},
                     status=status.HTTP_409_CONFLICT,
                 )
 
             turn = get_object_or_404(
-                GameTurn.objects.select_for_update().select_related(
-                    "team"
-                ),
+                GameTurn.objects.select_for_update().select_related("team"),
                 pk=turn_id,
                 game=locked_game,
             )
@@ -1327,7 +1294,7 @@ class SelectRandomGenreView(APIView):
             if player is None:
                 return Response(
                     {
-                        "detail": "Invalid player session.",
+                        "detail": STRING_ERROR_RESPONSES["invalid_player_session"],
                     },
                     status=status.HTTP_401_UNAUTHORIZED,
                 )
@@ -1374,16 +1341,12 @@ class SelectRandomGenreView(APIView):
             )
 
             unused_genres = [
-                genre
-                for genre in genres
-                if genre.pk not in used_genre_ids
+                genre for genre in genres if genre.pk not in used_genre_ids
             ]
 
             selection_pool = unused_genres or genres
 
-            selected_genre = secrets.SystemRandom().choice(
-                selection_pool
-            )
+            selected_genre = secrets.SystemRandom().choice(selection_pool)
 
             GameTurn.objects.filter(
                 pk=turn.pk,
@@ -1392,12 +1355,10 @@ class SelectRandomGenreView(APIView):
                 status=GameTurn.Status.GENRE_SELECTED,
             )
 
-            updated_turn = (
-                GameTurn.objects.select_related(
-                    "team",
-                    "genre",
-                ).get(pk=turn.pk)
-            )
+            updated_turn = GameTurn.objects.select_related(
+                "team",
+                "genre",
+            ).get(pk=turn.pk)
 
             event_data = {
                 "game_id": str(locked_game.pk),
@@ -1527,12 +1488,23 @@ class SpotifyCallbackView(APIView):
             "access_token": token_data["access_token"],
             "refresh_token": token_data.get("refresh_token"),
             "expires_at": (
-                int(time.time())
-                + int(cast(int, token_data.get("expires_in", 3600)))
+                int(time.time()) + int(cast(int, token_data.get("expires_in", 3600)))
             ),
         }
 
         request.session.modified = True
+
+        return_to = request.session.pop(
+            "spotify_oauth_return_to",
+            None,
+        )
+
+        if isinstance(return_to, str) and url_has_allowed_host_and_scheme(
+            return_to,
+            allowed_hosts={request.get_host()},
+            require_https=request.is_secure(),
+        ):
+            return HttpResponseRedirect(return_to)
 
         return Response(
             {
@@ -1549,7 +1521,7 @@ class SpotifyStatusView(APIView):
     def get(self, request):
         session = cast(
             SessionBase,
-            getattr(request, "session"),
+            request.session,
         )
 
         try:
@@ -1567,7 +1539,9 @@ class SpotifyStatusView(APIView):
             return Response(
                 {
                     "connected": False,
-                    "detail": "Spotify has not been connected.",
+                    "detail": STRING_ERROR_RESPONSES[
+                        "spotify_not_connected_error_message"
+                    ],
                 },
                 status=status.HTTP_401_UNAUTHORIZED,
             )
@@ -1575,7 +1549,7 @@ class SpotifyStatusView(APIView):
             return Response(
                 {
                     "connected": False,
-                    "detail": "Spotify could not be reached.",
+                    "detail": STRING_ERROR_RESPONSES["spotify_could_not_be_reached"],
                 },
                 status=status.HTTP_502_BAD_GATEWAY,
             )
@@ -1602,18 +1576,14 @@ class PrepareRandomTrackView(APIView):
     def post(self, request, game_id, turn_id):
         session = cast(
             SessionBase,
-            getattr(request, "session"),
+            request.session,
         )
 
         try:
             access_token = get_valid_access_token(session, user_id=request.user.pk)
         except SpotifyNotConnectedError:
             return Response(
-                {
-                    "detail": (
-                        "Connect Spotify before selecting a track."
-                    )
-                },
+                {"detail": ("Connect Spotify before selecting a track.")},
                 status=status.HTTP_401_UNAUTHORIZED,
             )
         except SpotifyServiceError:
@@ -1643,19 +1613,14 @@ class PrepareRandomTrackView(APIView):
             if game.status != Game.Status.IN_PROGRESS:
                 return Response(
                     {
-                        "detail": "The game is not in progress.",
+                        "detail": STRING_ERROR_RESPONSES["game_not_in_progress"],
                     },
                     status=status.HTTP_409_CONFLICT,
                 )
 
             if turn.status != GameTurn.Status.GENRE_SELECTED:
                 return Response(
-                    {
-                        "detail": (
-                            "A genre must be selected before preparing "
-                            "a track."
-                        )
-                    },
+                    {"detail": ("A genre must be selected before preparing a track.")},
                     status=status.HTTP_409_CONFLICT,
                 )
 
@@ -1673,11 +1638,7 @@ class PrepareRandomTrackView(APIView):
 
             if not playlist_id:
                 return Response(
-                    {
-                        "detail": (
-                            f"{genre.name} does not have a Spotify playlist."
-                        )
-                    },
+                    {"detail": (f"{genre.name} does not have a Spotify playlist.")},
                     status=status.HTTP_409_CONFLICT,
                 )
 
@@ -1695,10 +1656,7 @@ class PrepareRandomTrackView(APIView):
                 "Authorization": f"Bearer {access_token}",
             }
 
-            playlist_url = (
-                f"https://api.spotify.com/v1/playlists/"
-                f"{playlist_id}/items"
-            )
+            playlist_url = f"https://api.spotify.com/v1/playlists/{playlist_id}/items"
 
             try:
                 total_response = httpx.get(
@@ -1723,11 +1681,7 @@ class PrepareRandomTrackView(APIView):
                 ValueError,
             ):
                 return Response(
-                    {
-                        "detail": (
-                            "Spotify could not read this genre playlist."
-                        )
-                    },
+                    {"detail": ("Spotify could not read this genre playlist.")},
                     status=status.HTTP_502_BAD_GATEWAY,
                 )
 
@@ -1838,28 +1792,19 @@ class PrepareRandomTrackView(APIView):
             except httpx.HTTPStatusError as error:
                 if error.response.status_code == 429:
                     return Response(
-                        {
-                            "detail": (
-                                "Spotify rate limit reached. "
-                                "Try again later."
-                            )
-                        },
+                        {"detail": ("Spotify rate limit reached. Try again later.")},
                         status=status.HTTP_429_TOO_MANY_REQUESTS,
                     )
 
                 return Response(
-                    {
-                        "detail": (
-                            "Spotify could not load playlist tracks."
-                        )
-                    },
+                    {"detail": ("Spotify could not load playlist tracks.")},
                     status=status.HTTP_502_BAD_GATEWAY,
                 )
 
             except httpx.HTTPError:
                 return Response(
                     {
-                        "detail": "Spotify could not be reached.",
+                        "detail": STRING_ERROR_RESPONSES["spotify_could_not_be_reached"],
                     },
                     status=status.HTTP_502_BAD_GATEWAY,
                 )
@@ -1868,8 +1813,7 @@ class PrepareRandomTrackView(APIView):
                 return Response(
                     {
                         "detail": (
-                            "No eligible unused tracks were found "
-                            "in this playlist."
+                            "No eligible unused tracks were found in this playlist."
                         )
                     },
                     status=status.HTTP_409_CONFLICT,
@@ -1881,27 +1825,16 @@ class PrepareRandomTrackView(APIView):
             album = album_data if isinstance(album_data, dict) else {}
 
             artists_data = selected.get("artists")
-            artists = (
-                artists_data
-                if isinstance(artists_data, list)
-                else []
-            )
+            artists = artists_data if isinstance(artists_data, list) else []
 
             artist_names = [
                 artist["name"]
                 for artist in artists
-                if (
-                    isinstance(artist, dict)
-                    and isinstance(artist.get("name"), str)
-                )
+                if (isinstance(artist, dict) and isinstance(artist.get("name"), str))
             ]
 
             images_data = album.get("images")
-            images = (
-                images_data
-                if isinstance(images_data, list)
-                else []
-            )
+            images = images_data if isinstance(images_data, list) else []
 
             artwork_url = ""
 
@@ -1936,10 +1869,7 @@ class PrepareRandomTrackView(APIView):
                 defaults={
                     "spotify_uri": spotify_uri,
                     "title": title,
-                    "artist": (
-                        ", ".join(artist_names)
-                        or "Unknown artist"
-                    ),
+                    "artist": (", ".join(artist_names) or "Unknown artist"),
                     "album": str(
                         album.get(
                             "name",
@@ -1965,13 +1895,11 @@ class PrepareRandomTrackView(APIView):
                 status=GameTurn.Status.TRACK_READY,
             )
 
-            updated_turn = (
-                GameTurn.objects.select_related(
-                    "team",
-                    "genre",
-                    "track",
-                ).get(pk=turn.pk)
-            )
+            updated_turn = GameTurn.objects.select_related(
+                "team",
+                "genre",
+                "track",
+            ).get(pk=turn.pk)
 
             # This payload deliberately excludes all track information.
             event_data = {
@@ -2016,7 +1944,7 @@ class SpotifyDeviceListView(APIView):
     def get(self, request):
         session = cast(
             SessionBase,
-            getattr(request, "session"),
+            request.session,
         )
 
         try:
@@ -2032,7 +1960,11 @@ class SpotifyDeviceListView(APIView):
             spotify_response.raise_for_status()
         except SpotifyNotConnectedError:
             return Response(
-                {"detail": "Spotify has not been connected."},
+                {
+                    "detail": STRING_ERROR_RESPONSES[
+                        "spotify_not_connected_error_message"
+                    ]
+                },
                 status=status.HTTP_401_UNAUTHORIZED,
             )
         except (SpotifyServiceError, httpx.HTTPError):
@@ -2089,7 +2021,7 @@ class SelectSpotifyDeviceView(APIView):
 
         session = cast(
             SessionBase,
-            getattr(request, "session"),
+            request.session,
         )
 
         try:
@@ -2105,7 +2037,11 @@ class SelectSpotifyDeviceView(APIView):
             devices_response.raise_for_status()
         except SpotifyNotConnectedError:
             return Response(
-                {"detail": "Spotify has not been connected."},
+                {
+                    "detail": STRING_ERROR_RESPONSES[
+                        "spotify_not_connected_error_message"
+                    ]
+                },
                 status=status.HTTP_401_UNAUTHORIZED,
             )
         except (SpotifyServiceError, httpx.HTTPError):
@@ -2177,7 +2113,7 @@ class SelectSpotifyDeviceView(APIView):
             )
         except httpx.HTTPError:
             return Response(
-                {"detail": "Spotify could not be reached."},
+                {"detail": STRING_ERROR_RESPONSES["spotify_could_not_be_reached"]},
                 status=status.HTTP_502_BAD_GATEWAY,
             )
 
@@ -2215,7 +2151,7 @@ class StartTrackPlaybackView(APIView):
     def post(self, request, game_id, turn_id):
         session = cast(
             SessionBase,
-            getattr(request, "session"),
+            request.session,
         )
 
         # The Celery worker needs this key to retrieve the host's
@@ -2238,7 +2174,9 @@ class StartTrackPlaybackView(APIView):
         except SpotifyNotConnectedError:
             return Response(
                 {
-                    "detail": "Spotify has not been connected.",
+                    "detail": STRING_ERROR_RESPONSES[
+                        "spotify_not_connected_error_message"
+                    ],
                 },
                 status=status.HTTP_401_UNAUTHORIZED,
             )
@@ -2270,7 +2208,7 @@ class StartTrackPlaybackView(APIView):
             if game.status != Game.Status.IN_PROGRESS:
                 return Response(
                     {
-                        "detail": "The game is not in progress.",
+                        "detail": STRING_ERROR_RESPONSES["game_not_in_progress"],
                     },
                     status=status.HTTP_409_CONFLICT,
                 )
@@ -2293,11 +2231,7 @@ class StartTrackPlaybackView(APIView):
 
             if track is None:
                 return Response(
-                    {
-                        "detail": (
-                            "This turn does not have a prepared track."
-                        )
-                    },
+                    {"detail": ("This turn does not have a prepared track.")},
                     status=status.HTTP_409_CONFLICT,
                 )
 
@@ -2315,12 +2249,7 @@ class StartTrackPlaybackView(APIView):
 
             if not device_id:
                 return Response(
-                    {
-                        "detail": (
-                            "Select a central Spotify device "
-                            "before playback."
-                        )
-                    },
+                    {"detail": ("Select a central Spotify device before playback.")},
                     status=status.HTTP_409_CONFLICT,
                 )
 
@@ -2422,7 +2351,7 @@ class StartTrackPlaybackView(APIView):
                     except httpx.HTTPError:
                         return Response(
                             {
-                                "detail": "Spotify could not be reached.",
+                                "detail": STRING_ERROR_RESPONSES["spotify_could_not_be_reached"],
                             },
                             status=status.HTTP_502_BAD_GATEWAY,
                         )
@@ -2453,8 +2382,7 @@ class StartTrackPlaybackView(APIView):
                     return Response(
                         {
                             "detail": (
-                                "Spotify's rate limit was reached. "
-                                "Try again shortly."
+                                "Spotify's rate limit was reached. Try again shortly."
                             )
                         },
                         status=status.HTTP_429_TOO_MANY_REQUESTS,
@@ -2471,7 +2399,7 @@ class StartTrackPlaybackView(APIView):
             except httpx.HTTPError:
                 return Response(
                     {
-                        "detail": "Spotify could not be reached.",
+                        "detail": STRING_ERROR_RESPONSES["spotify_could_not_be_reached"],
                     },
                     status=status.HTTP_502_BAD_GATEWAY,
                 )
@@ -2489,22 +2417,18 @@ class StartTrackPlaybackView(APIView):
                 playback_stopped_at=None,
             )
 
-            updated_turn = (
-                GameTurn.objects.select_related(
-                    "track",
-                    "team",
-                    "genre",
-                ).get(pk=turn.pk)
-            )
+            updated_turn = GameTurn.objects.select_related(
+                "track",
+                "team",
+                "genre",
+            ).get(pk=turn.pk)
 
             playback_event_data = {
                 "game_id": str(game.pk),
                 "turn_id": str(updated_turn.pk),
                 "turn_status": updated_turn.status,
                 "playback_duration_seconds": PLAYBACK_CLIP_DURATION_SECONDS,
-                "playback_started_at": (
-                    playback_started_at.isoformat()
-                ),
+                "playback_started_at": (playback_started_at.isoformat()),
                 "clip_ends_at": clip_ends_at.isoformat(),
                 "team": {
                     "id": str(updated_turn.team.pk),
@@ -2574,7 +2498,7 @@ class StopTrackPlaybackView(APIView):
     ):
         session = cast(
             SessionBase,
-            getattr(request, "session"),
+            request.session,
         )
 
         try:
@@ -2582,7 +2506,9 @@ class StopTrackPlaybackView(APIView):
         except SpotifyNotConnectedError:
             return Response(
                 {
-                    "detail": "Spotify has not been connected.",
+                    "detail": STRING_ERROR_RESPONSES[
+                        "spotify_not_connected_error_message"
+                    ],
                 },
                 status=status.HTTP_401_UNAUTHORIZED,
             )
@@ -2613,18 +2539,14 @@ class StopTrackPlaybackView(APIView):
             if game.status != Game.Status.IN_PROGRESS:
                 return Response(
                     {
-                        "detail": "The game is not in progress.",
+                        "detail": STRING_ERROR_RESPONSES["game_not_in_progress"],
                     },
                     status=status.HTTP_409_CONFLICT,
                 )
 
             if turn.status != GameTurn.Status.PLAYING:
                 return Response(
-                    {
-                        "detail": (
-                            "This turn is not currently playing."
-                        )
-                    },
+                    {"detail": ("This turn is not currently playing.")},
                     status=status.HTTP_409_CONFLICT,
                 )
 
@@ -2632,12 +2554,7 @@ class StopTrackPlaybackView(APIView):
 
             if not device_id:
                 return Response(
-                    {
-                        "detail": (
-                            "No central Spotify device has "
-                            "been selected."
-                        )
-                    },
+                    {"detail": ("No central Spotify device has been selected.")},
                     status=status.HTTP_409_CONFLICT,
                 )
 
@@ -2684,26 +2601,21 @@ class StopTrackPlaybackView(APIView):
                     return Response(
                         {
                             "detail": (
-                                "Spotify's rate limit was reached. "
-                                "Try again shortly."
+                                "Spotify's rate limit was reached. Try again shortly."
                             )
                         },
                         status=status.HTTP_429_TOO_MANY_REQUESTS,
                     )
 
                 return Response(
-                    {
-                        "detail": (
-                            "Spotify could not stop playback."
-                        )
-                    },
+                    {"detail": ("Spotify could not stop playback.")},
                     status=status.HTTP_502_BAD_GATEWAY,
                 )
 
             except httpx.HTTPError:
                 return Response(
                     {
-                        "detail": "Spotify could not be reached.",
+                        "detail": STRING_ERROR_RESPONSES["spotify_could_not_be_reached"],
                     },
                     status=status.HTTP_502_BAD_GATEWAY,
                 )
@@ -2722,20 +2634,14 @@ class StopTrackPlaybackView(APIView):
             # the manual stop request was being processed.
             if updated_count == 0:
                 return Response(
-                    {
-                        "detail": (
-                            "This turn is no longer playing."
-                        )
-                    },
+                    {"detail": ("This turn is no longer playing.")},
                     status=status.HTTP_409_CONFLICT,
                 )
 
-            updated_turn = (
-                GameTurn.objects.select_related(
-                    "team",
-                    "genre",
-                ).get(pk=turn.pk)
-            )
+            updated_turn = GameTurn.objects.select_related(
+                "team",
+                "genre",
+            ).get(pk=turn.pk)
 
             genre = updated_turn.genre
 
@@ -2744,9 +2650,7 @@ class StopTrackPlaybackView(APIView):
                 "turn_id": str(updated_turn.pk),
                 "turn_status": updated_turn.status,
                 "reason": "admin_manual",
-                "playback_stopped_at": (
-                    playback_stopped_at.isoformat()
-                ),
+                "playback_stopped_at": (playback_stopped_at.isoformat()),
                 "team": {
                     "id": str(updated_turn.team.pk),
                     "name": updated_turn.team.name,
@@ -2807,7 +2711,7 @@ class RevealAnswerView(APIView):
 
             if game.status != Game.Status.IN_PROGRESS:
                 return Response(
-                    {"detail": "The game is not in progress."},
+                    {"detail": STRING_ERROR_RESPONSES["game_not_in_progress"]},
                     status=status.HTTP_409_CONFLICT,
                 )
 
@@ -2970,11 +2874,7 @@ class AwardScoreView(APIView):
 
             if game.status != Game.Status.IN_PROGRESS:
                 return Response(
-                    {
-                        "detail": (
-                            "The game is not currently in progress."
-                        )
-                    },
+                    {"detail": ("The game is not currently in progress.")},
                     status=status.HTTP_409_CONFLICT,
                 )
 
@@ -2982,8 +2882,7 @@ class AwardScoreView(APIView):
                 return Response(
                     {
                         "detail": (
-                            "The answer must be revealed before "
-                            "points can be awarded."
+                            "The answer must be revealed before points can be awarded."
                         )
                     },
                     status=status.HTTP_409_CONFLICT,
@@ -2991,12 +2890,7 @@ class AwardScoreView(APIView):
 
             if ScoreEvent.objects.filter(turn=turn).exists():
                 return Response(
-                    {
-                        "detail": (
-                            "A score has already been recorded "
-                            "for this turn."
-                        )
-                    },
+                    {"detail": ("A score has already been recorded for this turn.")},
                     status=status.HTTP_409_CONFLICT,
                 )
 
@@ -3030,13 +2924,11 @@ class AwardScoreView(APIView):
 
             team_total = team_total_result["total"] or 0
 
-            updated_turn = (
-                GameTurn.objects.select_related(
-                    "team",
-                    "genre",
-                    "track",
-                ).get(pk=turn.pk)
-            )
+            updated_turn = GameTurn.objects.select_related(
+                "team",
+                "genre",
+                "track",
+            ).get(pk=turn.pk)
 
             event_data = {
                 "game_id": str(game.pk),
@@ -3049,12 +2941,8 @@ class AwardScoreView(APIView):
                     "color": team.color,
                 },
                 "result": {
-                    "song_title_correct": (
-                        score_event.song_title_correct
-                    ),
-                    "artist_correct": (
-                        score_event.artist_correct
-                    ),
+                    "song_title_correct": (score_event.song_title_correct),
+                    "artist_correct": (score_event.artist_correct),
                     "points": score_event.points,
                 },
                 "team_total_points": team_total,
@@ -3078,17 +2966,12 @@ class AwardScoreView(APIView):
                     "artist_correct": artist_correct,
                     "points_awarded": points,
                 },
-                "score_event": ScoreEventSerializer(
-                    score_event
-                ).data,
+                "score_event": ScoreEventSerializer(score_event).data,
                 "team_total": team_total,
-                "turn": GameTurnSerializer(
-                    updated_turn
-                ).data,
+                "turn": GameTurnSerializer(updated_turn).data,
             },
             status=status.HTTP_201_CREATED,
         )
-    
 
 
 class AdvanceTurnView(APIView):
@@ -3111,7 +2994,7 @@ class AdvanceTurnView(APIView):
             if game.status != Game.Status.IN_PROGRESS:
                 return Response(
                     {
-                        "detail": "The game is not in progress.",
+                        "detail": STRING_ERROR_RESPONSES["game_not_in_progress"],
                     },
                     status=status.HTTP_409_CONFLICT,
                 )
@@ -3120,8 +3003,7 @@ class AdvanceTurnView(APIView):
                 return Response(
                     {
                         "detail": (
-                            "The current turn must be completed "
-                            "before advancing."
+                            "The current turn must be completed before advancing."
                         )
                     },
                     status=status.HTTP_409_CONFLICT,
@@ -3143,9 +3025,7 @@ class AdvanceTurnView(APIView):
                 .filter(
                     game=game,
                     round_number=completed_turn.round_number,
-                    turn_position__gt=(
-                        completed_turn.turn_position
-                    ),
+                    turn_position__gt=(completed_turn.turn_position),
                     status=GameTurn.Status.WAITING,
                 )
                 .order_by("turn_position")
@@ -3155,13 +3035,9 @@ class AdvanceTurnView(APIView):
             if next_turn is None:
                 round_event_data = {
                     "game_id": str(game.pk),
-                    "round_number": (
-                        completed_turn.round_number
-                    ),
+                    "round_number": (completed_turn.round_number),
                     "round_completed": True,
-                    "completed_turn_id": str(
-                        completed_turn.pk
-                    ),
+                    "completed_turn_id": str(completed_turn.pk),
                 }
 
                 transaction.on_commit(
@@ -3178,12 +3054,8 @@ class AdvanceTurnView(APIView):
                     {
                         "advanced": False,
                         "round_completed": True,
-                        "round_number": (
-                            completed_turn.round_number
-                        ),
-                        "detail": (
-                            "Every team has completed this round."
-                        ),
+                        "round_number": (completed_turn.round_number),
+                        "detail": ("Every team has completed this round."),
                         "next_turn": None,
                     },
                     status=status.HTTP_200_OK,
@@ -3198,30 +3070,20 @@ class AdvanceTurnView(APIView):
                 started_at=started_at,
             )
 
-            updated_turn = (
-                GameTurn.objects.select_related(
-                    "team",
-                    "genre",
-                    "track",
-                ).get(pk=next_turn.pk)
-            )
+            updated_turn = GameTurn.objects.select_related(
+                "team",
+                "genre",
+                "track",
+            ).get(pk=next_turn.pk)
 
             turn_event_data = {
                 "game_id": str(game.pk),
-                "previous_turn_id": str(
-                    completed_turn.pk
-                ),
-                "round_number": (
-                    updated_turn.round_number
-                ),
+                "previous_turn_id": str(completed_turn.pk),
+                "round_number": (updated_turn.round_number),
                 "active_turn": {
                     "id": str(updated_turn.pk),
-                    "round_number": (
-                        updated_turn.round_number
-                    ),
-                    "turn_position": (
-                        updated_turn.turn_position
-                    ),
+                    "round_number": (updated_turn.round_number),
+                    "turn_position": (updated_turn.turn_position),
                     "status": updated_turn.status,
                     "started_at": started_at.isoformat(),
                     "team": {
@@ -3246,9 +3108,7 @@ class AdvanceTurnView(APIView):
             {
                 "advanced": True,
                 "round_completed": False,
-                "active_turn": GameTurnSerializer(
-                    updated_turn
-                ).data,
+                "active_turn": GameTurnSerializer(updated_turn).data,
             },
             status=status.HTTP_200_OK,
         )
@@ -3343,7 +3203,7 @@ class StartNextRoundView(APIView):
             if game.status != Game.Status.IN_PROGRESS:
                 return Response(
                     {
-                        "detail": "The game is not in progress.",
+                        "detail": STRING_ERROR_RESPONSES["game_not_in_progress"],
                     },
                     status=status.HTTP_409_CONFLICT,
                 )
@@ -3361,18 +3221,12 @@ class StartNextRoundView(APIView):
 
             if not current_turns:
                 return Response(
-                    {
-                        "detail": (
-                            "The current round does not contain "
-                            "any turns."
-                        )
-                    },
+                    {"detail": ("The current round does not contain any turns.")},
                     status=status.HTTP_409_CONFLICT,
                 )
 
             incomplete_turns_exist = any(
-                turn.status != GameTurn.Status.COMPLETED
-                for turn in current_turns
+                turn.status != GameTurn.Status.COMPLETED for turn in current_turns
             )
 
             if incomplete_turns_exist:
@@ -3431,11 +3285,7 @@ class StartNextRoundView(APIView):
                         if index == 1
                         else GameTurn.Status.WAITING
                     ),
-                    started_at=(
-                        started_at
-                        if index == 1
-                        else None
-                    ),
+                    started_at=(started_at if index == 1 else None),
                 )
                 for index, team in enumerate(
                     teams,
@@ -3453,14 +3303,12 @@ class StartNextRoundView(APIView):
                 ]
             )
 
-            active_turn = (
-                GameTurn.objects.select_related(
-                    "team",
-                ).get(
-                    game=game,
-                    round_number=next_round,
-                    status=GameTurn.Status.ACTIVE,
-                )
+            active_turn = GameTurn.objects.select_related(
+                "team",
+            ).get(
+                game=game,
+                round_number=next_round,
+                status=GameTurn.Status.ACTIVE,
             )
 
             created_turns = list(
@@ -3479,12 +3327,8 @@ class StartNextRoundView(APIView):
                 "round_number": next_round,
                 "active_turn": {
                     "id": str(active_turn.pk),
-                    "round_number": (
-                        active_turn.round_number
-                    ),
-                    "turn_position": (
-                        active_turn.turn_position
-                    ),
+                    "round_number": (active_turn.round_number),
+                    "turn_position": (active_turn.turn_position),
                     "status": active_turn.status,
                     "started_at": (
                         active_turn.started_at.isoformat()
@@ -3514,9 +3358,7 @@ class StartNextRoundView(APIView):
                 "started": True,
                 "round_number": next_round,
                 "game": GameSerializer(game).data,
-                "active_turn": GameTurnSerializer(
-                    active_turn
-                ).data,
+                "active_turn": GameTurnSerializer(active_turn).data,
                 "turns": GameTurnSerializer(
                     created_turns,
                     many=True,
@@ -3550,12 +3392,7 @@ class FinishGameView(APIView):
                 Game.Status.PAUSED,
             ):
                 return Response(
-                    {
-                        "detail": (
-                            "Only a game that has started can "
-                            "be finished."
-                        )
-                    },
+                    {"detail": ("Only a game that has started can be finished.")},
                     status=status.HTTP_409_CONFLICT,
                 )
 
@@ -3564,12 +3401,7 @@ class FinishGameView(APIView):
                 status=GameTurn.Status.PLAYING,
             ).exists():
                 return Response(
-                    {
-                        "detail": (
-                            "Stop Spotify playback before "
-                            "finishing the game."
-                        )
-                    },
+                    {"detail": ("Stop Spotify playback before finishing the game.")},
                     status=status.HTTP_409_CONFLICT,
                 )
 
@@ -3642,11 +3474,7 @@ class FinishGameView(APIView):
                 entry["rank"] = current_rank
                 previous_score = entry_score
 
-            winning_score = (
-                cast(int, standings[0]["score"])
-                if standings
-                else 0
-            )
+            winning_score = cast(int, standings[0]["score"]) if standings else 0
 
             winners: list[dict[str, object]] = [
                 {
@@ -3707,11 +3535,7 @@ class RestartGameView(APIView):
                 status=GameTurn.Status.PLAYING,
             ).exists():
                 return Response(
-                    {
-                        "detail": (
-                            "Stop Spotify playback before restarting the game."
-                        )
-                    },
+                    {"detail": ("Stop Spotify playback before restarting the game.")},
                     status=status.HTTP_409_CONFLICT,
                 )
 
@@ -3773,19 +3597,14 @@ class GameStateView(APIView):
         )
 
         teams = list(
-            Team.objects.filter(game=game)
-            .select_related("leader")
-            .order_by("position")
+            Team.objects.filter(game=game).select_related("leader").order_by("position")
         )
         team_members: dict[int, list[dict[str, str]]] = {}
 
-        for player in (
-            Player.objects.filter(
-                game=game,
-                team__isnull=False,
-            )
-            .order_by("display_name")
-        ):
+        for player in Player.objects.filter(
+            game=game,
+            team__isnull=False,
+        ).order_by("display_name"):
             if player.team_id is None:
                 continue
 

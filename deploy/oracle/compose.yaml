@@ -1,19 +1,4 @@
 services:
-  postgres:
-    image: postgres:16-alpine
-    restart: unless-stopped
-    environment:
-      POSTGRES_DB: ${POSTGRES_DB}
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-
   redis:
     image: redis:7-alpine
     restart: unless-stopped
@@ -32,26 +17,27 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     init: true
+    user: "0:0"
     command: >-
       sh -c "python manage.py migrate --noinput &&
       python manage.py collectstatic --noinput &&
       daphne -b 0.0.0.0 -p 8000 config.asgi:application"
     environment:
-      DEBUG: "false"
+      DEBUG: ${DEBUG:-false}
       SECRET_KEY: ${DJANGO_SECRET_KEY}
-      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      DATABASE_URL: sqlite:///${SQLITE_PATH}
       CELERY_BROKER_URL: redis://redis:6379/0
       REDIS_CHANNEL_URL: redis://redis:6379/1
       SPOTIFY_CLIENT_ID: ${SPOTIFY_CLIENT_ID}
       SPOTIFY_CLIENT_SECRET: ${SPOTIFY_CLIENT_SECRET}
-      SPOTIFY_REDIRECT_URI: https://${APP_DOMAIN}/api/spotify/callback/
-      FRONTEND_ORIGIN: https://${APP_DOMAIN}
-      ALLOWED_HOSTS: ${APP_DOMAIN}
-      CORS_ALLOWED_ORIGINS: https://${APP_DOMAIN}
-      CSRF_TRUSTED_ORIGINS: https://${APP_DOMAIN}
+      SPOTIFY_REDIRECT_URI: ${APP_ORIGIN}/api/spotify/callback/
+      FRONTEND_ORIGIN: ${APP_ORIGIN}
+      ALLOWED_HOSTS: ${APP_DOMAIN},127.0.0.1,localhost
+      CORS_ALLOWED_ORIGINS: ${APP_ORIGIN}
+      CSRF_TRUSTED_ORIGINS: ${APP_ORIGIN}
+    volumes:
+      - sqlite_data:/app/data
     depends_on:
-      postgres:
-        condition: service_healthy
       redis:
         condition: service_healthy
     healthcheck:
@@ -66,23 +52,24 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     init: true
-    command: celery -A config worker --loglevel=info --concurrency=2
+    user: "0:0"
+    command: celery -A config worker --loglevel=info --concurrency=1
     environment:
-      DEBUG: "false"
+      DEBUG: ${DEBUG:-false}
       SECRET_KEY: ${DJANGO_SECRET_KEY}
-      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      DATABASE_URL: sqlite:///${SQLITE_PATH}
       CELERY_BROKER_URL: redis://redis:6379/0
       REDIS_CHANNEL_URL: redis://redis:6379/1
       SPOTIFY_CLIENT_ID: ${SPOTIFY_CLIENT_ID}
       SPOTIFY_CLIENT_SECRET: ${SPOTIFY_CLIENT_SECRET}
-      SPOTIFY_REDIRECT_URI: https://${APP_DOMAIN}/api/spotify/callback/
-      FRONTEND_ORIGIN: https://${APP_DOMAIN}
-      ALLOWED_HOSTS: ${APP_DOMAIN}
-      CORS_ALLOWED_ORIGINS: https://${APP_DOMAIN}
-      CSRF_TRUSTED_ORIGINS: https://${APP_DOMAIN}
+      SPOTIFY_REDIRECT_URI: ${APP_ORIGIN}/api/spotify/callback/
+      FRONTEND_ORIGIN: ${APP_ORIGIN}
+      ALLOWED_HOSTS: ${APP_DOMAIN},127.0.0.1,localhost
+      CORS_ALLOWED_ORIGINS: ${APP_ORIGIN}
+      CSRF_TRUSTED_ORIGINS: ${APP_ORIGIN}
+    volumes:
+      - sqlite_data:/app/data
     depends_on:
-      postgres:
-        condition: service_healthy
       redis:
         condition: service_healthy
 
@@ -93,9 +80,9 @@ services:
     restart: unless-stopped
     environment:
       NUXT_BACKEND_ORIGIN: http://backend:8000
-      NUXT_PUBLIC_APP_ORIGIN: https://${APP_DOMAIN}
-      NUXT_PUBLIC_BACKEND_ORIGIN: https://${APP_DOMAIN}
-      NUXT_PUBLIC_WS_ORIGIN: wss://${APP_DOMAIN}
+      NUXT_PUBLIC_APP_ORIGIN: ${APP_ORIGIN}
+      NUXT_PUBLIC_BACKEND_ORIGIN: ${APP_ORIGIN}
+      NUXT_PUBLIC_WS_ORIGIN: ${APP_ORIGIN}
     depends_on:
       backend:
         condition: service_healthy
@@ -107,6 +94,7 @@ services:
       - "80:80"
       - "443:443"
     environment:
+      APP_HOST: ${APP_HOST}
       APP_DOMAIN: ${APP_DOMAIN}
       ACME_EMAIL: ${ACME_EMAIL}
     volumes:
@@ -120,7 +108,7 @@ services:
         condition: service_started
 
 volumes:
-  postgres_data:
   redis_data:
+  sqlite_data:
   caddy_data:
   caddy_config:

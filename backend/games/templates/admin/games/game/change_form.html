@@ -1,0 +1,12 @@
+{% extends "admin/change_form.html" %}
+
+{% block object-tools-items %}
+  {% if original %}
+    <li>
+      <a href="{% url 'admin:games_game_spotify' original.pk %}">
+        Select Spotify device
+      </a>
+    </li>
+  {% endif %}
+  {{ block.super }}
+{% endblock %}
