@@ -5,9 +5,9 @@ from celery import shared_task
 from django.contrib.sessions.backends.db import SessionStore
 from django.utils import timezone
 
-from .models import GameTurn
-from .realtime import broadcast_game_event
-from .services.spotify import (
+from gameplay.models import GameTurn
+from games.realtime import broadcast_game_event
+from .services import (
     SpotifyNotConnectedError,
     SpotifyServiceError,
     get_valid_access_token,

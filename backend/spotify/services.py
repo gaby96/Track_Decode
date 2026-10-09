@@ -132,3 +132,4 @@ def get_valid_access_token(
     session.modified = True
 
     return cast(str, refreshed_access_token)
+

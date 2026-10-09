@@ -17,16 +17,11 @@ from django.urls import reverse
 from django.utils import timezone
 
 from .admin import GameAdmin
-from .models import (
-    JOIN_CODE_LENGTH,
-    Game,
-    GameTurn,
-    Genre,
-    Player,
-    ScoreEvent,
-    Team,
-    Track,
-)
+from gameplay.models import GameTurn, ScoreEvent
+from lobby.models import Player, Team
+from music.models import Genre, Track
+
+from .models import JOIN_CODE_LENGTH, Game
 from .routing import websocket_urlpatterns
 from .views import PLAYBACK_CLIP_DURATION_SECONDS
 

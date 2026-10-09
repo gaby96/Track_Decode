@@ -1,0 +1,176 @@
+import hashlib
+import secrets
+from functools import partial
+from typing import cast
+
+from django.db import transaction
+from django.shortcuts import get_object_or_404
+from gameplay.models import GameTurn
+from games.constants import STRING_ERROR_RESPONSES
+from games.models import Game
+from games.realtime import broadcast_game_event
+from games.serializers import (
+    GameTurnSerializer,
+    GenreSerializer,
+    PlayerSessionSerializer,
+)
+from lobby.models import Player, Team
+from rest_framework import status
+from rest_framework.permissions import AllowAny
+from rest_framework.response import Response
+from rest_framework.views import APIView
+
+from music.models import Genre
+
+
+class SelectRandomGenreView(APIView):
+    permission_classes = (AllowAny,)
+
+    def post(self, request, join_token, turn_id):
+        game = get_object_or_404(
+            Game,
+            join_token=join_token,
+        )
+
+        serializer = PlayerSessionSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        validated_data = cast(
+            dict[str, str],
+            serializer.validated_data,
+        )
+        session_token = validated_data["session_token"]
+
+        session_token_hash = hashlib.sha256(session_token.encode("utf-8")).hexdigest()
+
+        with transaction.atomic():
+            locked_game = Game.objects.select_for_update().get(pk=game.pk)
+
+            if locked_game.status != Game.Status.IN_PROGRESS:
+                return Response(
+                    {"detail": ("The game is not currently in progress.")},
+                    status=status.HTTP_409_CONFLICT,
+                )
+
+            turn = get_object_or_404(
+                GameTurn.objects.select_for_update().select_related("team"),
+                pk=turn_id,
+                game=locked_game,
+            )
+
+            if turn.status != GameTurn.Status.ACTIVE:
+                return Response(
+                    {
+                        "detail": "This is not the active turn.",
+                    },
+                    status=status.HTTP_409_CONFLICT,
+                )
+
+            player = Player.objects.filter(
+                game=locked_game,
+                session_token_hash=session_token_hash,
+            ).first()
+
+            if player is None:
+                return Response(
+                    {
+                        "detail": STRING_ERROR_RESPONSES["invalid_player_session"],
+                    },
+                    status=status.HTTP_401_UNAUTHORIZED,
+                )
+
+            is_active_leader = Team.objects.filter(
+                pk=turn.team.pk,
+                game=locked_game,
+                leader=player,
+            ).exists()
+
+            if not is_active_leader:
+                return Response(
+                    {
+                        "detail": (
+                            "Only the active team's elected leader "
+                            "can select the genre."
+                        )
+                    },
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+
+            genres = list(
+                Genre.objects.filter(
+                    is_enabled=True,
+                ).order_by("name")
+            )
+
+            if not genres:
+                return Response(
+                    {
+                        "detail": "No music genres have been enabled.",
+                    },
+                    status=status.HTTP_409_CONFLICT,
+                )
+
+            used_genre_ids = set(
+                GameTurn.objects.filter(
+                    game=locked_game,
+                    genre__isnull=False,
+                ).values_list(
+                    "genre",
+                    flat=True,
+                )
+            )
+
+            unused_genres = [
+                genre for genre in genres if genre.pk not in used_genre_ids
+            ]
+
+            selection_pool = unused_genres or genres
+
+            selected_genre = secrets.SystemRandom().choice(selection_pool)
+
+            GameTurn.objects.filter(
+                pk=turn.pk,
+            ).update(
+                genre=selected_genre,
+                status=GameTurn.Status.GENRE_SELECTED,
+            )
+
+            updated_turn = GameTurn.objects.select_related(
+                "team",
+                "genre",
+            ).get(pk=turn.pk)
+
+            event_data = {
+                "game_id": str(locked_game.pk),
+                "turn_id": str(updated_turn.pk),
+                "turn_status": updated_turn.status,
+                "team": {
+                    "id": str(updated_turn.team.pk),
+                    "name": updated_turn.team.name,
+                    "color": updated_turn.team.color,
+                },
+                "genre": {
+                    "id": str(selected_genre.pk),
+                    "name": selected_genre.name,
+                    "color": selected_genre.color,
+                },
+            }
+
+            transaction.on_commit(
+                partial(
+                    broadcast_game_event,
+                    locked_game.join_token,
+                    "genre.selected",
+                    event_data,
+                )
+            )
+
+        return Response(
+            {
+                "turn": GameTurnSerializer(updated_turn).data,
+                "genre": GenreSerializer(selected_genre).data,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
