@@ -9,10 +9,6 @@
         <h1 class="mt-2 font-display text-4xl text-ink">
           {{ state?.game.name || "Loading room" }}
         </h1>
-        <p class="mt-3 max-w-2xl text-sm leading-7 text-slate-600">
-          This screen stays in sync with the Django backend through websocket events and refreshed public state
-          snapshots.
-        </p>
       </div>
 
       <div class="grid gap-4 sm:grid-cols-2">
