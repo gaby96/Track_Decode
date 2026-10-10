@@ -38,7 +38,6 @@ export interface PublicPlayer {
 
 export interface PlayerJoinResponse {
   player: PublicPlayer;
-  session_token: string;
 }
 
 export interface PlayerSessionStateResponse {
@@ -121,6 +120,5 @@ export interface VotingCandidatesResponse {
 }
 
 export interface StoredPlayerSession {
-  sessionToken: string;
   player: PublicPlayer;
 }

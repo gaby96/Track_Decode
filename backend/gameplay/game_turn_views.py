@@ -1,60 +1,32 @@
-import hashlib
-import random
-import secrets
-import time
 from datetime import timedelta
 from functools import partial
 from typing import cast
-from urllib.parse import urlencode
-from uuid import UUID
 
 import httpx
 from celery import Task
-from django.conf import settings
 from django.contrib.sessions.backends.base import SessionBase
-from django.db import IntegrityError, transaction
-from django.db.models import Sum
-from django.http import HttpResponseRedirect
-from django.middleware.csrf import get_token
+from django.db import transaction
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
-from django.utils.decorators import method_decorator
-from django.utils.http import url_has_allowed_host_and_scheme
-from django.views.decorators.csrf import ensure_csrf_cookie
-from rest_framework import generics, status
-from rest_framework.permissions import AllowAny, IsAuthenticated
-from rest_framework.request import Request
-from rest_framework.response import Response
-from rest_framework.views import APIView
-
 from games.constants import STRING_ERROR_RESPONSES
 from games.models import Game
-from gameplay.models import GameTurn, ScoreEvent
-from lobby.models import LeaderVote, Player, Team
-from music.models import Genre, Track
 from games.realtime import broadcast_game_event
 from games.serializers import (
-    AwardScoreSerializer,
-    GameRoundsPerTeamUpdateSerializer,
-    GameSerializer,
     GameTurnSerializer,
-    GenreSerializer,
     HostTrackSerializer,
-    LeaderVoteSubmitSerializer,
-    PlayerJoinSerializer,
-    PlayerSessionSerializer,
-    PublicGameSerializer,
-    PublicPlayerSerializer,
-    ScoreEventSerializer,
-    SpotifyDeviceSelectionSerializer,
-    TeamSerializer,
 )
+from rest_framework import status
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from rest_framework.views import APIView
 from spotify.services import (
     SpotifyNotConnectedError,
     SpotifyServiceError,
     get_valid_access_token,
 )
 from spotify.tasks import stop_spotify_playback
+
+from gameplay.models import GameTurn
 
 PLAYBACK_CLIP_DURATION_SECONDS = 15
 

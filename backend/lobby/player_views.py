@@ -1,17 +1,17 @@
-import hashlib
-import secrets
 from functools import partial
 from typing import cast
 from uuid import UUID
 
+from django.contrib.sessions.backends.base import SessionBase
 from django.db import transaction
 from django.shortcuts import get_object_or_404
+from django.utils.decorators import method_decorator
+from django.views.decorators.csrf import csrf_protect
 from games.constants import STRING_ERROR_RESPONSES
 from games.models import Game
 from games.realtime import broadcast_game_event
 from games.serializers import (
     PlayerJoinSerializer,
-    PlayerSessionSerializer,
     PublicPlayerSerializer,
 )
 from rest_framework import generics, status
@@ -21,8 +21,10 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from lobby.models import Player
+from lobby.player_sessions import bind_player_to_session, get_session_player
 
 
+@method_decorator(csrf_protect, name="dispatch")
 class PlayerJoinView(APIView):
     permission_classes = (AllowAny,)
 
@@ -39,9 +41,6 @@ class PlayerJoinView(APIView):
             serializer.validated_data,
         )
         display_name = cast(str, validated_data["display_name"])
-
-        session_token = secrets.token_urlsafe(32)
-        session_token_hash = hashlib.sha256(session_token.encode("utf-8")).hexdigest()
 
         with transaction.atomic():
             game = get_object_or_404(
@@ -60,7 +59,6 @@ class PlayerJoinView(APIView):
             player = Player.objects.create(
                 game=game,
                 display_name=display_name,
-                session_token_hash=session_token_hash,
             )
 
             player_count = Player.objects.filter(game=game).count()
@@ -83,10 +81,17 @@ class PlayerJoinView(APIView):
                 )
             )
 
+        session = cast(SessionBase, request.session)
+
+        bind_player_to_session(
+            session,
+            join_token=game.join_token,
+            player=player,
+        )
+
         return Response(
             {
                 "player": PublicPlayerSerializer(player).data,
-                "session_token": session_token,
             },
             status=status.HTTP_201_CREATED,
         )
@@ -113,30 +118,16 @@ class HostPlayerListView(generics.ListAPIView):
 class PlayerSessionDetailView(APIView):
     permission_classes = (AllowAny,)
 
-    def post(
+    def get(
         self,
         request: Request,
         join_token: UUID,
     ) -> Response:
-        game = get_object_or_404(
-            Game,
-            join_token=join_token,
-        )
+        session = cast(SessionBase, request.session)
 
-        serializer = PlayerSessionSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-
-        validated_data = cast(dict[str, str], serializer.validated_data)
-        session_token = validated_data["session_token"]
-        session_token_hash = hashlib.sha256(session_token.encode("utf-8")).hexdigest()
-
-        player = (
-            Player.objects.select_related("team")
-            .filter(
-                game=game,
-                session_token_hash=session_token_hash,
-            )
-            .first()
+        player = get_session_player(
+            session,
+            join_token=join_token
         )
 
         if player is None:

@@ -1,10 +1,13 @@
-import hashlib
-import secrets
+
+import random
 from functools import partial
 from typing import cast
 
+from django.contrib.sessions.backends.base import SessionBase
 from django.db import transaction
 from django.shortcuts import get_object_or_404
+from django.utils.decorators import method_decorator
+from django.views.decorators.csrf import csrf_protect
 from gameplay.models import GameTurn
 from games.constants import STRING_ERROR_RESPONSES
 from games.models import Game
@@ -12,9 +15,9 @@ from games.realtime import broadcast_game_event
 from games.serializers import (
     GameTurnSerializer,
     GenreSerializer,
-    PlayerSessionSerializer,
 )
-from lobby.models import Player, Team
+from lobby.models import Team
+from lobby.player_sessions import get_session_player
 from rest_framework import status
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
@@ -23,28 +26,30 @@ from rest_framework.views import APIView
 from music.models import Genre
 
 
+@method_decorator(csrf_protect, name="dispatch")
 class SelectRandomGenreView(APIView):
     permission_classes = (AllowAny,)
 
     def post(self, request, join_token, turn_id):
-        game = get_object_or_404(
-            Game,
+        session = cast(SessionBase, request.session)
+
+        player = get_session_player(
+            session,
             join_token=join_token,
         )
 
-        serializer = PlayerSessionSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-
-        validated_data = cast(
-            dict[str, str],
-            serializer.validated_data,
-        )
-        session_token = validated_data["session_token"]
-
-        session_token_hash = hashlib.sha256(session_token.encode("utf-8")).hexdigest()
-
+        if player is None:
+            return Response(
+                {
+                    "detail": STRING_ERROR_RESPONSES["invalid_player_session"]
+                },
+                status=status.HTTP_401_UNAUTHORIZED
+            )
         with transaction.atomic():
-            locked_game = Game.objects.select_for_update().get(pk=game.pk)
+            locked_game = get_object_or_404(
+                Game.objects.select_for_update(),
+                join_token=join_token,
+            )
 
             if locked_game.status != Game.Status.IN_PROGRESS:
                 return Response(
@@ -66,18 +71,6 @@ class SelectRandomGenreView(APIView):
                     status=status.HTTP_409_CONFLICT,
                 )
 
-            player = Player.objects.filter(
-                game=locked_game,
-                session_token_hash=session_token_hash,
-            ).first()
-
-            if player is None:
-                return Response(
-                    {
-                        "detail": STRING_ERROR_RESPONSES["invalid_player_session"],
-                    },
-                    status=status.HTTP_401_UNAUTHORIZED,
-                )
 
             is_active_leader = Team.objects.filter(
                 pk=turn.team.pk,
@@ -126,7 +119,7 @@ class SelectRandomGenreView(APIView):
 
             selection_pool = unused_genres or genres
 
-            selected_genre = secrets.SystemRandom().choice(selection_pool)
+            selected_genre = random.SystemRandom().choice(selection_pool)
 
             GameTurn.objects.filter(
                 pk=turn.pk,

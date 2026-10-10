@@ -55,13 +55,6 @@ class Player(models.Model):
     )
     team_id: int
     display_name = models.CharField(max_length=50)
-    session_token_hash = models.CharField(
-        max_length=64,
-        unique=True,
-        null=True,
-        blank=True,
-        editable=False,
-    )
     is_connected = models.BooleanField(default=True)
     joined_at = models.DateTimeField(auto_now_add=True)
     last_seen_at = models.DateTimeField(auto_now=True)

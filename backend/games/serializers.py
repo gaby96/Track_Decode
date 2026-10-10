@@ -1,5 +1,3 @@
-from rest_framework import serializers
-
 from gameplay.serializers import (
     AwardScoreSerializer,
     GameTurnSerializer,
@@ -9,11 +7,11 @@ from lobby.models import Player
 from lobby.serializers import (
     LeaderVoteSubmitSerializer,
     PlayerJoinSerializer,
-    PlayerSessionSerializer,
     PublicPlayerSerializer,
     TeamSerializer,
 )
 from music.serializers import GenreSerializer, HostTrackSerializer
+from rest_framework import serializers
 from spotify.serializers import SpotifyDeviceSelectionSerializer
 
 from .models import Game
@@ -88,7 +86,6 @@ __all__ = [
     "HostTrackSerializer",
     "LeaderVoteSubmitSerializer",
     "PlayerJoinSerializer",
-    "PlayerSessionSerializer",
     "PublicGameSerializer",
     "PublicPlayerSerializer",
     "ScoreEventSerializer",

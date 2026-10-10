@@ -1,5 +1,4 @@
 import asyncio
-import hashlib
 import time
 import uuid
 from unittest.mock import Mock, patch
@@ -12,13 +11,14 @@ from channels.routing import URLRouter
 from django.contrib import admin
 from django.contrib.auth import get_user_model
 from django.contrib.sessions.backends.db import SessionStore
-from django.test import RequestFactory, TransactionTestCase, override_settings
+from django.test import Client, RequestFactory, TransactionTestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
 from .admin import GameAdmin
 from gameplay.models import GameTurn, ScoreEvent
 from lobby.models import Player, Team
+from lobby.player_sessions import PLAYER_SESSIONS_KEY
 from music.models import Genre, Track
 
 from .models import JOIN_CODE_LENGTH, Game
@@ -72,6 +72,26 @@ class GameRealtimeTests(TransactionTestCase):
             track=self.track,
             started_at=timezone.now(),
         )
+
+    def bind_player_session(
+        self,
+        player: Player,
+        client: Client | None = None,
+    ) -> Client:
+        player_client = client or self.client
+        session = player_client.session
+        player_sessions = session.get(PLAYER_SESSIONS_KEY, {})
+        session[PLAYER_SESSIONS_KEY] = {
+            **player_sessions,
+            str(player.game.join_token): str(player.pk),
+        }
+        session.save()
+        return player_client
+
+    def get_csrf_token(self, client: Client) -> str:
+        response = client.get(reverse("games:csrf-token"))
+        self.assertEqual(response.status_code, 200)
+        return response.json()["csrfToken"]
 
     async def _connect(self) -> WebsocketCommunicator:
         communicator = WebsocketCommunicator(
@@ -143,7 +163,6 @@ class GameRealtimeTests(TransactionTestCase):
                 game=self.game,
                 team=self.team,
                 display_name="Leader",
-                session_token_hash="leader-session-hash",
             )
             self.team.leader = player
             await sync_to_async(self.team.save)(update_fields=["leader"])
@@ -331,13 +350,11 @@ class GameRealtimeTests(TransactionTestCase):
             game=self.game,
             team=self.team,
             display_name="Alice",
-            session_token_hash="state-member-alice",
         )
         Player.objects.create(
             game=self.game,
             team=self.team,
             display_name="Bob",
-            session_token_hash="state-member-bob",
         )
         self.turn.status = GameTurn.Status.TRACK_READY
         genre = Genre.objects.create(
@@ -640,23 +657,18 @@ class GameRealtimeTests(TransactionTestCase):
         )
 
     def test_player_session_detail_returns_current_team_assignment(self) -> None:
-        session_token = "player-session-token"
         player = Player.objects.create(
             game=self.game,
             display_name="Alice",
             team=self.team,
-            session_token_hash=(
-                "c0cc75e8052f5c7233ef9ee1b9c2167ebb81a9308b1794dfec54c98d9d899ccf"
-            ),
         )
+        self.bind_player_session(player)
 
-        response = self.client.post(
+        response = self.client.get(
             reverse(
                 "games:player-session-detail",
                 kwargs={"join_token": self.game.join_token},
             ),
-            data={"session_token": session_token},
-            content_type="application/json",
         )
 
         self.assertEqual(response.status_code, 200)
@@ -672,6 +684,118 @@ class GameRealtimeTests(TransactionTestCase):
             response.json()["player"]["team_name"],
             self.team.name,
         )
+
+    def test_player_join_requires_csrf_token(self) -> None:
+        game = Game.objects.create(
+            host=self.host,
+            name="CSRF Join Game",
+            number_of_teams=2,
+            status=Game.Status.LOBBY_OPEN,
+            registration_open=True,
+        )
+        csrf_client = Client(enforce_csrf_checks=True)
+        join_url = reverse(
+            "games:player-join",
+            kwargs={"join_token": game.join_token},
+        )
+
+        rejected_response = csrf_client.post(
+            join_url,
+            data={"display_name": "Alice"},
+            content_type="application/json",
+        )
+
+        self.assertEqual(rejected_response.status_code, 403)
+        self.assertFalse(Player.objects.filter(game=game).exists())
+
+        csrf_token = self.get_csrf_token(csrf_client)
+        accepted_response = csrf_client.post(
+            join_url,
+            data={"display_name": "Alice"},
+            content_type="application/json",
+            headers={"X-CSRFToken": csrf_token},
+        )
+
+        self.assertEqual(accepted_response.status_code, 201)
+        self.assertNotIn("session_token", accepted_response.json())
+        self.assertEqual(Player.objects.filter(game=game).count(), 1)
+
+    def test_leader_vote_requires_csrf_token(self) -> None:
+        self.game.status = Game.Status.VOTING_OPEN
+        self.game.save(update_fields=["status"])
+        alice = Player.objects.create(
+            game=self.game,
+            team=self.team,
+            display_name="Alice",
+        )
+        bob = Player.objects.create(
+            game=self.game,
+            team=self.team,
+            display_name="Bob",
+        )
+        csrf_client = Client(enforce_csrf_checks=True)
+        self.bind_player_session(alice, csrf_client)
+        vote_url = reverse(
+            "games:submit-leader-vote",
+            kwargs={"join_token": self.game.join_token},
+        )
+        vote_data = {"candidate_id": str(bob.pk)}
+
+        rejected_response = csrf_client.post(
+            vote_url,
+            data=vote_data,
+            content_type="application/json",
+        )
+
+        self.assertEqual(rejected_response.status_code, 403)
+
+        csrf_token = self.get_csrf_token(csrf_client)
+        accepted_response = csrf_client.post(
+            vote_url,
+            data=vote_data,
+            content_type="application/json",
+            headers={"X-CSRFToken": csrf_token},
+        )
+
+        self.assertEqual(accepted_response.status_code, 201)
+
+    def test_genre_selection_requires_csrf_token(self) -> None:
+        leader = Player.objects.create(
+            game=self.game,
+            team=self.team,
+            display_name="Alice",
+        )
+        self.team.leader = leader
+        self.team.save(update_fields=["leader"])
+        self.turn.status = GameTurn.Status.ACTIVE
+        self.turn.save(update_fields=["status"])
+        Genre.objects.create(
+            name="Pop",
+            color="#FF3366",
+            spotify_playlist_id="csrf-playlist",
+            exclude_explicit=True,
+        )
+        csrf_client = Client(enforce_csrf_checks=True)
+        self.bind_player_session(leader, csrf_client)
+        genre_url = reverse(
+            "games:select-random-genre",
+            kwargs={
+                "join_token": self.game.join_token,
+                "turn_id": self.turn.pk,
+            },
+        )
+
+        rejected_response = csrf_client.post(genre_url)
+
+        self.assertEqual(rejected_response.status_code, 403)
+
+        csrf_token = self.get_csrf_token(csrf_client)
+        accepted_response = csrf_client.post(
+            genre_url,
+            headers={"X-CSRFToken": csrf_token},
+        )
+
+        self.assertEqual(accepted_response.status_code, 200)
 
     def test_prepare_track_uses_spotify_tokens_from_other_active_host_session(
         self,
@@ -784,12 +908,10 @@ class GameRealtimeTests(TransactionTestCase):
         alice = Player.objects.create(
             game=flow_game,
             display_name="Alice",
-            session_token_hash="alice-session-hash",
         )
         bob = Player.objects.create(
             game=flow_game,
             display_name="Bob",
-            session_token_hash="bob-session-hash",
         )
 
         with patch(
@@ -851,12 +973,10 @@ class GameRealtimeTests(TransactionTestCase):
         alice = Player.objects.create(
             game=flow_game,
             display_name="Alice",
-            session_token_hash="assign-auto-leader-alice",
         )
         bob = Player.objects.create(
             game=flow_game,
             display_name="Bob",
-            session_token_hash="assign-auto-leader-bob",
         )
 
         self.client.force_login(self.host)
@@ -905,13 +1025,11 @@ class GameRealtimeTests(TransactionTestCase):
             game=flow_game,
             team=team_one,
             display_name="Alice",
-            session_token_hash="start-auto-leader-alice",
         )
         bob = Player.objects.create(
             game=flow_game,
             team=team_two,
             display_name="Bob",
-            session_token_hash="start-auto-leader-bob",
         )
 
         self.client.force_login(self.host)
@@ -936,10 +1054,6 @@ class GameRealtimeTests(TransactionTestCase):
         self.assertEqual(team_two.leader_id, bob.pk)
 
     def test_single_player_team_does_not_vote_when_voting_open(self) -> None:
-        alice_token = "solo-mixed-alice-token"
-        bob_token = "solo-mixed-bob-token"
-        cara_token = "solo-mixed-cara-token"
-
         flow_game = Game.objects.create(
             host=self.host,
             name="Mixed Voting Game",
@@ -951,23 +1065,14 @@ class GameRealtimeTests(TransactionTestCase):
         alice = Player.objects.create(
             game=flow_game,
             display_name="Alice",
-            session_token_hash=hashlib.sha256(
-                alice_token.encode("utf-8")
-            ).hexdigest(),
         )
         bob = Player.objects.create(
             game=flow_game,
             display_name="Bob",
-            session_token_hash=hashlib.sha256(
-                bob_token.encode("utf-8")
-            ).hexdigest(),
         )
         cara = Player.objects.create(
             game=flow_game,
             display_name="Cara",
-            session_token_hash=hashlib.sha256(
-                cara_token.encode("utf-8")
-            ).hexdigest(),
         )
 
         self.client.force_login(self.host)
@@ -1006,32 +1111,31 @@ class GameRealtimeTests(TransactionTestCase):
         self.assertNotEqual(alice.team_id, bob.team_id)
         self.assertEqual(bob.team.leader_id, bob.pk)
 
-        solo_candidates = self.client.post(
+        self.bind_player_session(bob)
+        solo_candidates = self.client.get(
             reverse(
                 "games:team-voting-candidates",
                 kwargs={"join_token": flow_game.join_token},
             ),
-            data={"session_token": bob_token},
-            content_type="application/json",
         )
 
         self.assertEqual(solo_candidates.status_code, 200)
         self.assertFalse(solo_candidates.json()["requires_vote"])
         self.assertEqual(solo_candidates.json()["team_player_count"], 1)
 
-        team_candidates = self.client.post(
+        self.bind_player_session(alice)
+        team_candidates = self.client.get(
             reverse(
                 "games:team-voting-candidates",
                 kwargs={"join_token": flow_game.join_token},
             ),
-            data={"session_token": alice_token},
-            content_type="application/json",
         )
 
         self.assertEqual(team_candidates.status_code, 200)
         self.assertTrue(team_candidates.json()["requires_vote"])
         self.assertEqual(team_candidates.json()["team_player_count"], 2)
 
+        self.bind_player_session(bob)
         solo_vote = self.client.post(
             reverse(
                 "games:submit-leader-vote",
@@ -1039,7 +1143,6 @@ class GameRealtimeTests(TransactionTestCase):
             ),
             data={"candidate_id": str(bob.pk)},
             content_type="application/json",
-            headers={"X-Player-Token": bob_token},
         )
 
         self.assertEqual(solo_vote.status_code, 409)
@@ -1049,9 +1152,6 @@ class GameRealtimeTests(TransactionTestCase):
         )
 
     def test_player_cannot_change_leader_vote_after_submitting(self) -> None:
-        alice_token = "locked-vote-alice-token"
-        bob_token = "locked-vote-bob-token"
-
         flow_game = Game.objects.create(
             host=self.host,
             name="Locked Vote Game",
@@ -1076,18 +1176,13 @@ class GameRealtimeTests(TransactionTestCase):
             game=flow_game,
             team=team_one,
             display_name="Alice",
-            session_token_hash=hashlib.sha256(
-                alice_token.encode("utf-8")
-            ).hexdigest(),
         )
         bob = Player.objects.create(
             game=flow_game,
             team=team_one,
             display_name="Bob",
-            session_token_hash=hashlib.sha256(
-                bob_token.encode("utf-8")
-            ).hexdigest(),
         )
+        self.bind_player_session(alice)
 
         first_vote = self.client.post(
             reverse(
@@ -1096,18 +1191,15 @@ class GameRealtimeTests(TransactionTestCase):
             ),
             data={"candidate_id": str(alice.pk)},
             content_type="application/json",
-            headers={"X-Player-Token": alice_token},
         )
 
         self.assertEqual(first_vote.status_code, 201)
 
-        candidates_after_vote = self.client.post(
+        candidates_after_vote = self.client.get(
             reverse(
                 "games:team-voting-candidates",
                 kwargs={"join_token": flow_game.join_token},
             ),
-            data={"session_token": alice_token},
-            content_type="application/json",
         )
 
         self.assertEqual(candidates_after_vote.status_code, 200)
@@ -1120,7 +1212,6 @@ class GameRealtimeTests(TransactionTestCase):
             ),
             data={"candidate_id": str(bob.pk)},
             content_type="application/json",
-            headers={"X-Player-Token": alice_token},
         )
 
         self.assertEqual(second_vote.status_code, 409)
@@ -1156,13 +1247,11 @@ class GameRealtimeTests(TransactionTestCase):
             game=flow_game,
             team=team_one,
             display_name="Alice",
-            session_token_hash="close-voting-alice",
         )
         bob = Player.objects.create(
             game=flow_game,
             team=team_two,
             display_name="Bob",
-            session_token_hash="close-voting-bob",
         )
 
         self.client.force_login(self.host)
@@ -1209,22 +1298,27 @@ class GameRealtimeTests(TransactionTestCase):
             "games:player-join",
             kwargs={"join_token": flow_game.join_token},
         )
-        alice_join = self.client.post(
+        alice_client = Client()
+        bob_client = Client()
+        cara_client = Client()
+        dan_client = Client()
+
+        alice_join = alice_client.post(
             join_url,
             data={"display_name": "Alice"},
             content_type="application/json",
         )
-        bob_join = self.client.post(
+        bob_join = bob_client.post(
             join_url,
             data={"display_name": "Bob"},
             content_type="application/json",
         )
-        cara_join = self.client.post(
+        cara_join = cara_client.post(
             join_url,
             data={"display_name": "Cara"},
             content_type="application/json",
         )
-        dan_join = self.client.post(
+        dan_join = dan_client.post(
             join_url,
             data={"display_name": "Dan"},
             content_type="application/json",
@@ -1234,11 +1328,6 @@ class GameRealtimeTests(TransactionTestCase):
         self.assertEqual(bob_join.status_code, 201)
         self.assertEqual(cara_join.status_code, 201)
         self.assertEqual(dan_join.status_code, 201)
-
-        alice_token = alice_join.json()["session_token"]
-        bob_token = bob_join.json()["session_token"]
-        cara_token = cara_join.json()["session_token"]
-        dan_token = dan_join.json()["session_token"]
 
         self.client.force_login(self.host)
         session = self.client.session
@@ -1298,82 +1387,70 @@ class GameRealtimeTests(TransactionTestCase):
         )
         self.assertEqual(open_voting.status_code, 200)
 
-        alice_candidates = self.client.post(
+        alice_candidates = alice_client.get(
             reverse(
                 "games:team-voting-candidates",
                 kwargs={"join_token": flow_game.join_token},
             ),
-            data={"session_token": alice_token},
-            content_type="application/json",
         )
-        bob_candidates = self.client.post(
+        bob_candidates = bob_client.get(
             reverse(
                 "games:team-voting-candidates",
                 kwargs={"join_token": flow_game.join_token},
             ),
-            data={"session_token": bob_token},
-            content_type="application/json",
         )
         self.assertEqual(alice_candidates.status_code, 200)
         self.assertEqual(bob_candidates.status_code, 200)
 
-        cara_candidates = self.client.post(
+        cara_candidates = cara_client.get(
             reverse(
                 "games:team-voting-candidates",
                 kwargs={"join_token": flow_game.join_token},
             ),
-            data={"session_token": cara_token},
-            content_type="application/json",
         )
-        dan_candidates = self.client.post(
+        dan_candidates = dan_client.get(
             reverse(
                 "games:team-voting-candidates",
                 kwargs={"join_token": flow_game.join_token},
             ),
-            data={"session_token": dan_token},
-            content_type="application/json",
         )
         self.assertEqual(cara_candidates.status_code, 200)
         self.assertEqual(dan_candidates.status_code, 200)
 
-        alice_vote = self.client.post(
+        alice_vote = alice_client.post(
             reverse(
                 "games:submit-leader-vote",
                 kwargs={"join_token": flow_game.join_token},
             ),
             data={"candidate_id": str(alice.pk)},
             content_type="application/json",
-            headers={"X-Player-Token": alice_token},
         )
-        bob_vote = self.client.post(
+        bob_vote = bob_client.post(
             reverse(
                 "games:submit-leader-vote",
                 kwargs={"join_token": flow_game.join_token},
             ),
             data={"candidate_id": str(bob.pk)},
             content_type="application/json",
-            headers={"X-Player-Token": bob_token},
         )
         self.assertEqual(alice_vote.status_code, 201)
         self.assertEqual(bob_vote.status_code, 201)
 
-        cara_vote = self.client.post(
+        cara_vote = cara_client.post(
             reverse(
                 "games:submit-leader-vote",
                 kwargs={"join_token": flow_game.join_token},
             ),
             data={"candidate_id": str(alice.pk)},
             content_type="application/json",
-            headers={"X-Player-Token": cara_token},
         )
-        dan_vote = self.client.post(
+        dan_vote = dan_client.post(
             reverse(
                 "games:submit-leader-vote",
                 kwargs={"join_token": flow_game.join_token},
             ),
             data={"candidate_id": str(bob.pk)},
             content_type="application/json",
-            headers={"X-Player-Token": dan_token},
         )
         self.assertEqual(cara_vote.status_code, 201)
         self.assertEqual(dan_vote.status_code, 201)
@@ -1406,10 +1483,10 @@ class GameRealtimeTests(TransactionTestCase):
 
         if active_turn.team_id == alice.team_id:
             leader = alice
-            leader_token = alice_token
+            leader_client = alice_client
         else:
             leader = bob
-            leader_token = bob_token
+            leader_client = bob_client
 
         self.assertEqual(active_turn.team.leader_id, leader.pk)
 
@@ -1417,7 +1494,7 @@ class GameRealtimeTests(TransactionTestCase):
             "games.views.secrets.SystemRandom.choice",
             side_effect=lambda sequence: sequence[0],
         ):
-            select_genre = self.client.post(
+            select_genre = leader_client.post(
                 reverse(
                     "games:select-random-genre",
                     kwargs={
@@ -1425,8 +1502,6 @@ class GameRealtimeTests(TransactionTestCase):
                         "turn_id": active_turn.pk,
                     },
                 ),
-                data={"session_token": leader_token},
-                content_type="application/json",
             )
         self.assertEqual(select_genre.status_code, 200)
         self.assertEqual(select_genre.json()["genre"]["id"], str(genre.pk))
@@ -1663,13 +1738,11 @@ class GameRealtimeTests(TransactionTestCase):
             game=self.game,
             team=self.team,
             display_name="Gabriel",
-            session_token_hash="restart-player-1",
         )
         player_two = Player.objects.create(
             game=self.game,
             team=self.team,
             display_name="Patricia",
-            session_token_hash="restart-player-2",
         )
         self.team.leader = player_one
         self.team.save(update_fields=["leader"])

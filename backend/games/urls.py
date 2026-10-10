@@ -1,4 +1,32 @@
 from django.urls import path
+from gameplay.game_turn_views import (
+    AdvanceTurnView,
+    RevealAnswerView,
+    StartTrackPlaybackView,
+    StopTrackPlaybackView,
+)
+from gameplay.score_event_views import AwardScoreView, PublicLeaderboardView
+from lobby.leader_vote_views import (
+    CloseVotingView,
+    OpenVotingView,
+    SubmitLeaderVoteView,
+    TeamVotingCandidatesView,
+)
+from lobby.player_views import (
+    HostPlayerListView,
+    PlayerJoinView,
+    PlayerSessionDetailView,
+)
+from lobby.team_views import AssignTeamsView
+from music.genre_views import SelectRandomGenreView
+from music.track_views import PrepareRandomTrackView
+from spotify.views import (
+    SelectSpotifyDeviceView,
+    SpotifyCallbackView,
+    SpotifyDeviceListView,
+    SpotifyLoginView,
+    SpotifyStatusView,
+)
 
 from .game_views import (
     CloseRegistrationView,
@@ -12,35 +40,7 @@ from .game_views import (
     StartNextRoundView,
     UpdateGameRoundsView,
 )
-from gameplay.game_turn_views import (
-    AdvanceTurnView,
-    RevealAnswerView,
-    StartTrackPlaybackView,
-    StopTrackPlaybackView,
-)
-from music.genre_views import SelectRandomGenreView
-from lobby.leader_vote_views import (
-    CloseVotingView,
-    OpenVotingView,
-    SubmitLeaderVoteView,
-    TeamVotingCandidatesView,
-)
-from lobby.player_views import (
-    HostPlayerListView,
-    PlayerJoinView,
-    PlayerSessionDetailView,
-)
-from gameplay.score_event_views import AwardScoreView, PublicLeaderboardView
-from spotify.views import (
-    SelectSpotifyDeviceView,
-    SpotifyCallbackView,
-    SpotifyDeviceListView,
-    SpotifyLoginView,
-    SpotifyStatusView,
-)
 from .system_views import CsrfTokenView, HealthcheckView
-from lobby.team_views import AssignTeamsView
-from music.track_views import PrepareRandomTrackView
 
 app_name = "games"
 

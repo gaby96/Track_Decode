@@ -1,44 +1,25 @@
 import type { StoredPlayerSession } from "~/types/game";
 
 export function usePlayerSession(joinToken: string) {
-  const storageKey = `spotify-game:player:${joinToken}`;
+  const session = useState<StoredPlayerSession | null>(
+    `player-session:${joinToken}`,
+    () => null,
+  );
 
   function read(): StoredPlayerSession | null {
-    if (import.meta.server) {
-      return null;
-    }
-
-    const rawValue = localStorage.getItem(storageKey);
-
-    if (!rawValue) {
-      return null;
-    }
-
-    try {
-      return JSON.parse(rawValue) as StoredPlayerSession;
-    } catch {
-      localStorage.removeItem(storageKey);
-      return null;
-    }
+    return session.value;
   }
 
   function write(value: StoredPlayerSession) {
-    if (import.meta.server) {
-      return;
-    }
-
-    localStorage.setItem(storageKey, JSON.stringify(value));
+    session.value = value;
   }
 
   function clear() {
-    if (import.meta.server) {
-      return;
-    }
-
-    localStorage.removeItem(storageKey);
+    session.value = null;
   }
 
   return {
+    session,
     read,
     write,
     clear,

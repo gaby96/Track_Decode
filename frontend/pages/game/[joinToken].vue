@@ -1,6 +1,7 @@
 <template>
   <div class="space-y-8">
-    <section class="grid gap-6 rounded-[2rem] border border-white/70 bg-[var(--card-strong)] p-6 shadow-pulse backdrop-blur md:grid-cols-[1.2fr_0.8fr] md:p-8">
+    <section
+      class="grid gap-6 rounded-[2rem] border border-white/70 bg-[var(--card-strong)] p-6 shadow-pulse backdrop-blur md:grid-cols-[1.2fr_0.8fr] md:p-8">
       <div>
         <p class="text-sm font-medium uppercase tracking-[0.22em] text-slate-500">
           Live Game View
@@ -9,7 +10,8 @@
           {{ state?.game.name || "Loading room" }}
         </h1>
         <p class="mt-3 max-w-2xl text-sm leading-7 text-slate-600">
-          This screen stays in sync with the Django backend through websocket events and refreshed public state snapshots.
+          This screen stays in sync with the Django backend through websocket events and refreshed public state
+          snapshots.
         </p>
       </div>
 
@@ -33,10 +35,8 @@
 
     <div class="grid gap-8 xl:grid-cols-[1.1fr_0.9fr]">
       <div class="space-y-8">
-        <section
-          v-if="storedSession"
-          class="rounded-[2rem] border border-white/70 bg-white/90 p-6 shadow-pulse backdrop-blur md:p-8"
-        >
+        <section v-if="storedSession"
+          class="rounded-[2rem] border border-white/70 bg-white/90 p-6 shadow-pulse backdrop-blur md:p-8">
           <p class="text-sm font-medium uppercase tracking-[0.22em] text-slate-500">
             Your Seat
           </p>
@@ -50,37 +50,26 @@
               </p>
             </div>
 
-            <div
-              v-if="playerTeam"
-              class="rounded-[1.5rem] border px-4 py-3 text-sm font-bold"
-              :style="{
-                borderColor: playerTeam.color,
-                color: playerTeam.color,
-                backgroundColor: `${playerTeam.color}12`,
-              }"
-            >
+            <div v-if="playerTeam" class="rounded-[1.5rem] border px-4 py-3 text-sm font-bold" :style="{
+              borderColor: playerTeam.color,
+              color: playerTeam.color,
+              backgroundColor: `${playerTeam.color}12`,
+            }">
               {{ playerTeam.name }}
             </div>
           </div>
 
-          <div
-            v-if="playerTeam?.players.length"
-            class="mt-5 rounded-[1.5rem] border border-slate-200/80 bg-slate-50/85 p-4"
-          >
+          <div v-if="playerTeam?.players.length"
+            class="mt-5 rounded-[1.5rem] border border-slate-200/80 bg-slate-50/85 p-4">
             <p class="text-xs uppercase tracking-[0.18em] text-slate-500">
               Team Members
             </p>
             <div class="mt-3 flex flex-wrap gap-2">
-              <div
-                v-for="member in playerTeam.players"
-                :key="member.id"
-                class="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
-              >
+              <div v-for="member in playerTeam.players" :key="member.id"
+                class="rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700">
                 <span class="font-semibold text-ink">{{ member.display_name }}</span>
-                <span
-                  v-if="playerTeam.leader?.id === member.id"
-                  class="ml-2 text-xs font-bold uppercase tracking-[0.14em] text-amber-600"
-                >
+                <span v-if="playerTeam.leader?.id === member.id"
+                  class="ml-2 text-xs font-bold uppercase tracking-[0.14em] text-amber-600">
                   Leader
                 </span>
               </div>
@@ -88,12 +77,8 @@
           </div>
         </section>
 
-        <WinnersShowcase
-          v-if="isFinished"
-          :finished-at="state?.game.finished_at || null"
-          :standings="state?.standings || []"
-          :winners="winningTeams"
-        >
+        <WinnersShowcase v-if="isFinished" :finished-at="state?.game.finished_at || null"
+          :standings="state?.standings || []" :winners="winningTeams">
           <template v-if="isHostForCurrentGame" #actions>
             <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
@@ -102,27 +87,19 @@
                   Restart the room and return everyone to the lobby.
                 </p>
               </div>
-              <button
-                :disabled="restartingGame || !state"
+              <button :disabled="restartingGame || !state"
                 class="rounded-2xl bg-ink px-5 py-3 text-sm font-bold uppercase tracking-[0.18em] text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
-                type="button"
-                @click="restartGame"
-              >
+                type="button" @click="restartGame">
                 {{ restartingGame ? "Restarting..." : "Restart Game" }}
               </button>
             </div>
           </template>
         </WinnersShowcase>
 
-        <CurrentTurnPanel
-          v-else
-          :turn="state?.current_turn || null"
-        />
+        <CurrentTurnPanel v-else :turn="state?.current_turn || null" />
 
-        <section
-          v-if="votingPanelVisible"
-          class="rounded-[2rem] border border-white/70 bg-[var(--card)] p-6 shadow-pulse backdrop-blur md:p-8"
-        >
+        <section v-if="votingPanelVisible"
+          class="rounded-[2rem] border border-white/70 bg-[var(--card)] p-6 shadow-pulse backdrop-blur md:p-8">
           <div class="flex flex-wrap items-center justify-between gap-3">
             <div>
               <p class="text-sm font-medium uppercase tracking-[0.22em] text-slate-500">
@@ -136,51 +113,37 @@
           <div v-if="candidatesPending" class="mt-5 text-sm text-slate-600">
             Loading team candidates...
           </div>
-          <div v-else-if="candidateError" class="mt-5 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
+          <div v-else-if="candidateError"
+            class="mt-5 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
             {{ candidateError }}
           </div>
           <form v-else-if="candidateData" class="mt-5 space-y-4" @submit.prevent="submitVote">
             <div class="grid gap-3">
-              <label
-                v-for="candidate in candidateData.candidates"
-                :key="candidate.id"
+              <label v-for="candidate in candidateData.candidates" :key="candidate.id"
                 class="flex items-center justify-between rounded-[1.5rem] border border-slate-200 bg-white/90 px-4 py-4"
-                :class="candidateData.has_voted ? 'cursor-not-allowed opacity-70' : 'cursor-pointer hover:border-ink'"
-              >
+                :class="candidateData.has_voted ? 'cursor-not-allowed opacity-70' : 'cursor-pointer hover:border-ink'">
                 <div>
                   <p class="text-base font-bold text-ink">{{ candidate.display_name }}</p>
                   <p class="text-sm text-slate-500">{{ candidate.team_name }}</p>
                 </div>
-                <input
-                  v-model="selectedCandidateId"
-                  :value="candidate.id"
-                  :disabled="candidateData.has_voted"
-                  class="h-4 w-4 accent-ink"
-                  name="candidate"
-                  type="radio"
-                >
+                <input v-model="selectedCandidateId" :value="candidate.id" :disabled="candidateData.has_voted"
+                  class="h-4 w-4 accent-ink" name="candidate" type="radio">
               </label>
             </div>
 
-            <div
-              v-if="candidateData.has_voted"
-              class="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-800"
-            >
+            <div v-if="candidateData.has_voted"
+              class="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-800">
               Your vote has already been recorded and can no longer be changed.
             </div>
 
-            <div
-              v-if="voteMessage"
-              class="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800"
-            >
+            <div v-if="voteMessage"
+              class="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
               {{ voteMessage }}
             </div>
 
-            <button
-              :disabled="submittingVote || !selectedCandidateId || candidateData.has_voted"
+            <button :disabled="submittingVote || !selectedCandidateId || candidateData.has_voted"
               class="rounded-2xl bg-ink px-5 py-3 text-sm font-bold uppercase tracking-[0.18em] text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
-              type="submit"
-            >
+              type="submit">
               {{
                 candidateData.has_voted
                   ? "Vote Submitted"
@@ -192,10 +155,8 @@
           </form>
         </section>
 
-        <section
-          v-if="leaderActionVisible"
-          class="rounded-[2rem] border border-amber-200 bg-amber-50 p-6 shadow-pulse md:p-8"
-        >
+        <section v-if="leaderActionVisible"
+          class="rounded-[2rem] border border-amber-200 bg-amber-50 p-6 shadow-pulse md:p-8">
           <p class="text-sm font-medium uppercase tracking-[0.22em] text-amber-700">
             Leader Action
           </p>
@@ -204,25 +165,20 @@
             {{ leaderActionHint }}
           </p>
 
-          <div v-if="spinMessage" class="mt-5 rounded-2xl border border-amber-200 bg-white/70 px-4 py-3 text-sm text-amber-800">
+          <div v-if="spinMessage"
+            class="mt-5 rounded-2xl border border-amber-200 bg-white/70 px-4 py-3 text-sm text-amber-800">
             {{ spinMessage }}
           </div>
 
-          <button
-            :disabled="spinningGenre || !canSpinGenre || !state?.current_turn"
+          <button :disabled="spinningGenre || !canSpinGenre || !state?.current_turn"
             class="mt-5 rounded-2xl bg-amber-500 px-5 py-3 text-sm font-bold uppercase tracking-[0.18em] text-white hover:bg-amber-600 disabled:cursor-not-allowed disabled:bg-amber-300"
-            type="button"
-            @click="spinGenre"
-          >
+            type="button" @click="spinGenre">
             {{ spinningGenre ? "Selecting..." : "Spin Genre" }}
           </button>
         </section>
       </div>
 
-      <StandingsTable
-        v-if="!isFinished"
-        :standings="state?.standings || []"
-      />
+      <StandingsTable v-if="!isFinished" :standings="state?.standings || []" />
     </div>
   </div>
 </template>
@@ -475,16 +431,6 @@ watch(
   { immediate: true },
 );
 
-watch(
-  () => storedSession.value?.sessionToken,
-  async (sessionToken, previousSessionToken) => {
-    if (sessionToken && sessionToken !== previousSessionToken) {
-      await refreshPlayerSession();
-      await refreshVotingPanel();
-    }
-  },
-);
-
 async function refreshVotingPanel() {
   if (!storedSession.value || state.value?.game.status !== "VOTING_OPEN") {
     candidateData.value = null;
@@ -506,10 +452,7 @@ async function refreshVotingPanel() {
     const response = await apiFetch<VotingCandidatesResponse>(
       `/games/join/${joinToken.value}/voting/candidates/`,
       {
-        method: "POST",
-        body: {
-          session_token: storedSession.value.sessionToken,
-        },
+        method: "GET",
       },
     );
 
@@ -540,30 +483,24 @@ async function refreshVotingPanel() {
 }
 
 async function refreshPlayerSession() {
-  if (!storedSession.value) {
-    return;
-  }
 
   try {
     const response = await apiFetch<PlayerSessionStateResponse>(
       `/games/join/${joinToken.value}/session/`,
       {
-        method: "POST",
-        body: {
-          session_token: storedSession.value.sessionToken,
-        },
+        method: "GET",
       },
     );
 
-    const updatedSession = {
-      ...storedSession.value,
+    const updatedSession: StoredPlayerSession = {
       player: response.player,
     };
 
     storedSession.value = updatedSession;
     playerSession.write(updatedSession);
   } catch {
-    // Keep the local session if the hydration call fails.
+    storedSession.value = null;
+    playerSession.clear();
   }
 }
 
@@ -732,7 +669,7 @@ async function submitVote() {
     }>(`/games/join/${joinToken.value}/voting/`, {
       method: "POST",
       headers: {
-        "X-Player-Token": storedSession.value.sessionToken,
+        "X-CSRFToken": await getCsrfToken(),
       },
       body: {
         candidate_id: selectedCandidateId.value,
@@ -799,8 +736,8 @@ async function spinGenre() {
       `/games/join/${joinToken.value}/turns/${state.value.current_turn.id}/genre/`,
       {
         method: "POST",
-        body: {
-          session_token: storedSession.value.sessionToken,
+        headers: {
+          "X-CSRFToken": await getCsrfToken(),
         },
       },
     );

@@ -45,13 +45,4 @@ class TeamSerializer(serializers.ModelSerializer):
 
 
 class LeaderVoteSubmitSerializer(serializers.Serializer):
-    session_token = serializers.CharField(
-        max_length=128, trim_whitespace=False, write_only=True
-    )
     candidate_id = serializers.UUIDField()
-
-
-class PlayerSessionSerializer(serializers.Serializer):
-    session_token = serializers.CharField(
-        max_length=128, trim_whitespace=False, write_only=True
-    )

@@ -28,7 +28,7 @@ class PlayerAdmin(admin.ModelAdmin):
     list_filter = ("game", "team", "is_connected")
     search_fields = ("display_name", "game__name")
     autocomplete_fields = ("game", "team")
-    readonly_fields = ("id", "session_token_hash", "joined_at", "last_seen_at")
+    readonly_fields = ("id", "joined_at", "last_seen_at")
 
 
 @admin.register(LeaderVote)

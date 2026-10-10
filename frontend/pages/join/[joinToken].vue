@@ -108,10 +108,11 @@
 </template>
 
 <script setup lang="ts">
-import type { PlayerJoinResponse, PublicGame, StoredPlayerSession } from "~/types/game";
+import type { PlayerJoinResponse, PlayerSessionStateResponse, PublicGame, StoredPlayerSession } from "~/types/game";
 
 const route = useRoute();
 const { apiFetch, getErrorMessage } = useApi();
+const { getCsrfToken } = useCsrfToken();
 const joinToken = computed(() => String(route.params.joinToken));
 const playerSession = usePlayerSession(joinToken.value);
 const continueRoute = computed(() => (
@@ -134,8 +135,27 @@ const { data: game, pending, error } = await useAsyncData<PublicGame>(
   () => apiFetch(`/games/join/${joinToken.value}/`),
 );
 
-onMounted(() => {
+onMounted(async () => {
   existingSession.value = playerSession.read();
+
+  try {
+    const response = await apiFetch<PlayerSessionStateResponse>(
+      `/games/join/${joinToken.value}/session/`,
+      {
+        method: "GET",
+      },
+    );
+
+    const session = {
+      player: response.player,
+    };
+
+    playerSession.write(session);
+    existingSession.value = session;
+  } catch {
+    playerSession.clear();
+    existingSession.value = null;
+  }
 });
 
 async function submitJoin() {
@@ -153,6 +173,9 @@ async function submitJoin() {
       `/games/join/${joinToken.value}/players/`,
       {
         method: "POST",
+        headers: {
+          "X-CSRFToken": await getCsrfToken(),
+        },
         body: {
           display_name: displayName.value,
         },
@@ -160,7 +183,6 @@ async function submitJoin() {
     );
 
     playerSession.write({
-      sessionToken: response.session_token,
       player: response.player,
     });
 

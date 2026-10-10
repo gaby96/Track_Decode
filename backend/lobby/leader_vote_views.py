@@ -1,17 +1,18 @@
-import hashlib
 import random
 from functools import partial
 from typing import cast
 from uuid import UUID
 
+from django.contrib.sessions.backends.base import SessionBase
 from django.db import transaction
 from django.shortcuts import get_object_or_404
+from django.utils.decorators import method_decorator
+from django.views.decorators.csrf import csrf_protect
 from games.constants import STRING_ERROR_RESPONSES
 from games.models import Game
 from games.realtime import broadcast_game_event
 from games.serializers import (
     GameSerializer,
-    PlayerSessionSerializer,
     PublicPlayerSerializer,
     TeamSerializer,
 )
@@ -22,6 +23,8 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from lobby.models import LeaderVote, Player, Team
+
+from .player_sessions import get_session_player
 
 
 class OpenVotingView(APIView):
@@ -146,6 +149,7 @@ class OpenVotingView(APIView):
         )
 
 
+@method_decorator(csrf_protect, name="dispatch")
 class SubmitLeaderVoteView(APIView):
     permission_classes = (AllowAny,)
 
@@ -154,15 +158,18 @@ class SubmitLeaderVoteView(APIView):
         request: Request,
         join_token: UUID,
     ) -> Response:
-        session_token = request.headers.get(
-            "X-Player-Token",
-            "",
-        ).strip()
 
-        if not session_token:
+        session = cast(SessionBase, request.session)
+
+        session_player = get_session_player(
+            session,
+            join_token=join_token
+        )
+
+        if session_player is None:
             return Response(
                 {
-                    "detail": "The X-Player-Token header is required.",
+                    "detail": STRING_ERROR_RESPONSES["invalid_player_session"],
                 },
                 status=status.HTTP_401_UNAUTHORIZED,
             )
@@ -188,8 +195,6 @@ class SubmitLeaderVoteView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        session_token_hash = hashlib.sha256(session_token.encode("utf-8")).hexdigest()
-
         with transaction.atomic():
             game = get_object_or_404(
                 Game.objects.select_for_update(),
@@ -208,8 +213,8 @@ class SubmitLeaderVoteView(APIView):
                 Player.objects.select_for_update()
                 .select_related("team")
                 .filter(
+                    pk=session_player.pk,
                     game=game,
-                    session_token_hash=session_token_hash,
                 )
                 .first()
             )
@@ -217,7 +222,7 @@ class SubmitLeaderVoteView(APIView):
             if voter is None:
                 return Response(
                     {
-                        "detail": "The player token is invalid.",
+                        "detail": "The player session is invalid.",
                     },
                     status=status.HTTP_401_UNAUTHORIZED,
                 )
@@ -319,24 +324,12 @@ class SubmitLeaderVoteView(APIView):
 class TeamVotingCandidatesView(APIView):
     permission_classes = (AllowAny,)
 
-    def post(self, request, join_token):
-        game = get_object_or_404(Game, join_token=join_token)
+    def get(self, request, join_token: UUID,):
+        session = cast(SessionBase, request.session)
 
-        serializer = PlayerSessionSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-
-        validated_data = cast(dict[str, str], serializer.validated_data)
-        session_token = validated_data["session_token"]
-
-        session_token_hash = hashlib.sha256(session_token.encode("utf-8")).hexdigest()
-
-        player = (
-            Player.objects.select_related("team")
-            .filter(
-                game=game,
-                session_token_hash=session_token_hash,
-            )
-            .first()
+        player = get_session_player(
+            session,
+            join_token=join_token,
         )
 
         if player is None:
@@ -345,6 +338,7 @@ class TeamVotingCandidatesView(APIView):
                 status=status.HTTP_401_UNAUTHORIZED,
             )
 
+        game = player.game
         team = player.team
 
         if team is None:
